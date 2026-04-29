@@ -1,6 +1,24 @@
 # W3D3 → W3D4+ Handoff
 
-## 상태 요약 (2026-04-29 종료 시점)
+## 2026-04-29 α 후속 종료 시점 — T1 gate PASS via Branch (B)
+
+W3D3-α (option α — ASM bytecode rewriting + R.jar id seeding) 완료.
+- **167 unit + 12 integration PASS + 1 SKIP** (tier3-glyph).
+- `LayoutlibRendererIntegrationTest` enable + Material/AppCompat fallback 으로 **`activity_basic_minimal.xml` SUCCESS**.
+- Branch (B) 발화: primary `activity_basic.xml` (MaterialButton 포함) 가 `Theme.AppCompat` enforcement throw → contingency `activity_basic_minimal.xml` (Button 으로 교체) retry → SUCCESS.
+
+### 다음 carry — `MATERIAL-FIDELITY` (recommended W3D4)
+sample-app 의 `Theme.AxpFixture` (Material3.DayNight) 가 inflation 시 RenderResources 에 보이도록 app/library resource value loader 추가. 완료 시 primary `activity_basic.xml` (MaterialButton 포함) 가 contingency 없이 PASS. ~500-1000 LOC, W3D1 framework loader 와 동일 패턴.
+
+### α 후속 세션 산출물
+- spec round 2: `docs/superpowers/specs/2026-04-29-w3d3-alpha-bytecode-rewriting-design.md`.
+- plan v2: `docs/superpowers/plans/2026-04-29-w3d3-alpha-bytecode-rewriting.md`.
+- session log: `alpha-session-log.md`.
+- pair reviews: `alpha-spec-pair-review-round1-{claude,codex}.md`, `alpha-plan-pair-review-round2-{claude,codex}.md`.
+
+---
+
+## 2026-04-29 base 종료 시점 (HISTORICAL — α 가 close)
 
 **완료 (push to origin/main)**:
 - W3D3 의 classloader 인프라 8 main + 8 test = 16 신규 파일 + 6 production 수정. 142 unit + 11 integration PASS + 2 SKIPPED.
