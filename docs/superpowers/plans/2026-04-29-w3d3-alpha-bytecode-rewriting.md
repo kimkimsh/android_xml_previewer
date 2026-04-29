@@ -13,7 +13,20 @@
 
 **Spec**: [`2026-04-29-w3d3-alpha-bytecode-rewriting-design.md`](../specs/2026-04-29-w3d3-alpha-bytecode-rewriting-design.md). 모든 결정은 spec round 2 본문에 일치.
 
-**Pair-review status**: spec round 1 페어 리뷰 close (Claude NO_GO 2 blockers → spec round 2 반영; Codex 명시 verdict 미생성). 본 plan v1 에 대한 별도 round 2 페어 리뷰 진입 후 구현 phase.
+**Pair-review status**: spec round 1 close. plan round 2 페어 리뷰 — Claude NO_GO 1 blocker (A1) + Codex NO_GO 2 blockers (A1 + A2). **Direction 컨버전스** (severity 동일 NO_GO). 본 v2 가 양측 fix 모두 반영 — 구현 phase 진입.
+
+### Round 2 plan-review fixes (Claude + Codex 컨버전스)
+
+- **A1 (HARD BLOCKER, 양측 컨버전스)**: Task α-5 의 `renderWithMaterialFallback` 가 stack trace 만 보면 Material frame 부재로 검출 실패. `renderer.lastSessionResult?.exception/errorMessage` 사용. 본 v2 의 α-5 Step 5 코드 정정.
+- **A2 (HARD BLOCKER, Codex-only valid)**: spec §4.5 의 `parseRClassName` 이 `private fun` 인데 plan α-4 Step 1 이 직접 테스트하려 함 → 컴파일 fail. **Fix**: `parseRClassName` 의 visibility 를 `internal` 로 (test 가 같은 모듈 안에서 access). 또는 테스트를 `seed()` 통해서만. 본 v2 가 spec 에서 `internal` 로 변경 + plan α-4 Step 1 의 테스트는 동일 클래스 internal access.
+- **B4 (Codex valid)**: plan α-5 가 0개 unit test 추가 — callback init 의 새 동작 (initializer seeds, FIRST_ID >= 0x7F800000, initializer exception wrapping) 을 직접 검증 안 함. **Fix**: α-5 에 3 callback unit tests 추가. 합계 test count `+21 → +24` = "spec 의 +23 ≈ 일치".
+- **B7 (Codex valid)**: REWRITE_VERSION cache path layer 가 α-1 의 simple format test + α-3 의 path verification 으로 커버.
+- **C2 (양측)**: test count math — 본 v2 의 acceptance gate 가 142 → 166 (B4 의 +3 포함).
+- **C3 (양측)**: callsite 12개 explicit list — 본 v2 명시.
+- **C4 (Claude empirical)**: 기존 AarExtractorTest fixtures 안전 (EOCD-only ZIP → 0 entries). 본 v2 α-3 prose 명시.
+- **C6 (Claude empirical)**: contingency `activity_basic_minimal.xml` 의 ConstraintLayout 도 R.jar id seeding 의존 — 본 α 가 attr seeding 으로 처리. style 0x7f0f03fd (Widget_MaterialComponents_Button) 는 standard Button 으로 교체했으므로 contingency 에서 발화 안 함 (Codex 검증).
+- **D1 (양측)**: synthetic R.jar fixture 는 ASM-based (javac 회피). α-4 Step 1 prose 명시.
+- **D3 (Codex)**: branch (C) carry 의 explicit data list (primary/fallback layout, lastSessionResult 의 status/errorMessage/exception, stderr key lines, full stack trace, classification) — 본 v2 α-6 prose 명시.
 
 ---
 
@@ -408,21 +421,82 @@ Expected: 3 + 5 = 8 PASS.
 - Modify: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/LayoutlibRendererIntegrationTest.kt` (`@Disabled` 제거)
 - Create: `fixture/sample-app/app/src/main/res/layout/activity_basic_minimal.xml`
 
-- [ ] **Step 1: callback 시그니처 변경**
+- [ ] **Step 1: callback 시그니처 변경 + 3 새 단위 테스트** (Codex pair-review B4)
 
-`MinimalLayoutlibCallback(viewClassLoaderProvider, initializer)` — initializer 가 `(register: (ResourceReference, Int) -> Unit) -> Unit`. init 에서 try-catch wrapping.
+callback 변경:
+- `MinimalLayoutlibCallback(viewClassLoaderProvider, initializer)` — initializer 가 `(register: (ResourceReference, Int) -> Unit) -> Unit`. init 에서 try-catch wrapping → IllegalStateException 으로 wrap.
+- `FIRST_ID = 0x7F80_0000` 으로 변경 (round 2 Q2).
+- `advanceNextIdAbove(seeded: Int)` private method 추가 (CAS-based monotonicity).
 
-`FIRST_ID = 0x7F80_0000` 으로 변경.
+3 신규 단위 테스트 (`MinimalLayoutlibCallbackInitializerTest.kt`):
 
-`advanceNextIdAbove(seeded: Int)` private method 추가 (CAS-based).
+```kotlin
+package dev.axp.layoutlib.worker.session
 
-- [ ] **Step 2: 12 callsites 일괄 갱신**
+import com.android.ide.common.rendering.api.ResourceNamespace
+import com.android.ide.common.rendering.api.ResourceReference
+import com.android.resources.ResourceType
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 
-```bash
-grep -rn "MinimalLayoutlibCallback {" server/ --include="*.kt"
+class MinimalLayoutlibCallbackInitializerTest {
+
+    @Test
+    fun `initializer 가 등록한 ref+id 가 resolveResourceId 로 reverse-lookup 가능`() {
+        val seededRef = ResourceReference(
+            ResourceNamespace.fromPackageName("com.example"),
+            ResourceType.ATTR,
+            "myAttr",
+        )
+        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }) { register ->
+            register(seededRef, 0x7F010001)
+        }
+        assertEquals(seededRef, cb.resolveResourceId(0x7F010001))
+        assertEquals(0x7F010001, cb.getOrGenerateResourceId(seededRef))
+    }
+
+    @Test
+    fun `getOrGenerateResourceId 가 seed 된 high id 위로 증가`() {
+        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }) { register ->
+            // seed 가 FIRST_ID 0x7F800000 보다 큰 값을 등록 → nextId 가 그 위로 advance
+            register(
+                ResourceReference(ResourceNamespace.fromPackageName("p"), ResourceType.ID, "seedHigh"),
+                0x7F900000,
+            )
+        }
+        val newRef = ResourceReference(ResourceNamespace.fromPackageName("p"), ResourceType.ID, "fresh")
+        val newId = cb.getOrGenerateResourceId(newRef)
+        assertTrue(newId > 0x7F900000, "fresh id ($newId) > seed (0x7F900000)")
+    }
+
+    @Test
+    fun `initializer 가 throw 하면 IllegalStateException 으로 wrap`() {
+        val ex = assertThrows<IllegalStateException> {
+            MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }) { _ ->
+                error("simulated R.jar I/O failure")
+            }
+        }
+        assertTrue(ex.message!!.contains("R.jar"), "메시지에 R.jar 포함: ${ex.message}")
+    }
+}
 ```
 
-각 site 에서 `MinimalLayoutlibCallback({ cl })` → `MinimalLayoutlibCallback({ cl }, { /* no-op */ })`.
+- [ ] **Step 2: 12 callsites 일괄 갱신** (Claude pair-review C3 — 명시 enumeration)
+
+다음 12 sites 의 호출을 `MinimalLayoutlibCallback({ cl })` → `MinimalLayoutlibCallback({ cl }, { /* no-op initializer */ })` 로 변경 (각 file 의 정확한 호출 라인은 grep 으로 재확인):
+
+1. `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/session/MinimalLayoutlibCallbackTest.kt` — **8 sites** (각 @Test 의 callback 인스턴스 생성).
+2. `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/session/SessionParamsFactoryTest.kt` — **2 sites** (lines 42, 65 에서 ad-hoc callback 생성).
+3. `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/session/MinimalLayoutlibCallbackLoadViewTest.kt` — **1 site** (TrackingClassLoader 패턴의 newCallback helper).
+4. `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/LayoutlibRenderer.kt` — **1 site** (renderViaLayoutlib 안의 callback 생성). 본 site 만 production initializer = `::seedRJarSymbols` (Step 3 에서 처리).
+
+검증:
+```bash
+grep -rn "MinimalLayoutlibCallback {" server/ --include="*.kt" | wc -l   # 12 expected before, 모두 update 후 0
+grep -rn "MinimalLayoutlibCallback({" server/ --include="*.kt" | wc -l   # 0 → 12 update 후
+```
 
 - [ ] **Step 3: LayoutlibRenderer 의 `seedRJarSymbols` method + ::method reference wire**
 
@@ -457,8 +531,17 @@ private fun renderWithMaterialFallback(
     }
     catch (t: Throwable)
     {
-        if (t.stackTraceToString().contains("Material") ||
-            t.stackTraceToString().contains("ThemeEnforcement"))
+        // Claude pair-review A1 fix: renderPng 가 bare IllegalStateException 만 throw 하므로
+        // stack trace 에 Material 프레임이 없음. layoutlib 의 진단 hook (lastSessionResult) 가
+        // ERROR_INFLATION 의 actual exception/errorMessage 를 보유 — 여기서 분기.
+        val sessionExc = renderer.lastSessionResult?.exception
+        val sessionMsg = renderer.lastSessionResult?.errorMessage ?: ""
+        val excString = sessionExc?.let { it::class.qualifiedName + " " + (it.message ?: "") } ?: ""
+        val isMaterial = excString.contains("Material", ignoreCase = true) ||
+            excString.contains("ThemeEnforcement", ignoreCase = true) ||
+            sessionMsg.contains("Material", ignoreCase = true) ||
+            sessionMsg.contains("ThemeEnforcement", ignoreCase = true)
+        if (isMaterial)
         {
             fallback to renderer.renderPng(fallback)
         }

@@ -365,8 +365,11 @@ internal object RJarSymbolSeeder {
     /**
      * @return Pair(packageName, typeSimpleName) — 예: ("androidx.constraintlayout.widget", "attr").
      * R 클래스 이름 패턴 안 맞으면 null. 패키지 없는 bare `R$attr` 도 null (`/R` 접미사 부재).
+     *
+     * Visibility: `internal` (round 2 plan-review A2 — 단위 테스트 직접 호출 가능). 외부에서는
+     * `seed()` 가 단일 entry-point 이므로 internal 노출이 surface 추가가 아님.
      */
-    private fun parseRClassName(internalName: String): Pair<String, String>? {
+    internal fun parseRClassName(internalName: String): Pair<String, String>? {
         val dollarIdx = internalName.lastIndexOf(INNER_CLASS_SEPARATOR)
         if (dollarIdx < 0)
         {
