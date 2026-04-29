@@ -1,11 +1,28 @@
-# W3D4 MATERIAL-FIDELITY — Design Spec (round 1)
+# W3D4 MATERIAL-FIDELITY — Design Spec (round 2)
 
-**Status**: round 1 (Codex 페어 리뷰 entry point)
+**Status**: round 2 (post-pair-review, GO accepted by user)
 **Date**: 2026-04-29
 **Carry**: W3D3-α 의 Branch (B) contingency (`activity_basic_minimal.xml` Button) → primary (`activity_basic.xml` MaterialButton) 환원
 **Predecessor**: `docs/work_log/2026-04-29_w3d3-l3-classloader/next-session-handoff.md`
 **Prior art**: `docs/superpowers/specs/2026-04-23-w3-resource-value-loader-design.md` (W3D1 framework loader)
-**Spec author**: Claude (Q1-Q4 사용자 결정 반영)
+**Round 1**: git history (commit `0ccb8c7`) — Codex+Claude 페어 리뷰가 4개 critical issue 발견 → round 2 가 σ FULL 채택, RES_AUTO mode 통일, R name canonicalization 추가, 비용 추정 보정.
+**Pair-review verdict (round 1)**: full convergence (Q3 DISAGREE, Q5 AGREE) + set-converge (Q1 NUANCED, Q2 NUANCED, Q4 NUANCED, Q6 NUANCED). judge round 불필요.
+
+---
+
+## 0. Round 2 변경 요약 (round 1 → round 2 delta)
+
+| 결정 | round 1 | round 2 (post-pair) |
+|---|---|---|
+| **Q1 namespace 모드** | hybrid (app=RES_AUTO + AAR=named per-package) | **traditional 통일** — 모든 non-framework = RES_AUTO. AAR 의 package 는 진단/dedupe 추적용으로만 추출 |
+| **Q3 resolver 위임** | ρ (`getResolvedResource = getUnresolvedResource`, base 위임) | **σ FULL** — 9 method override (resolveResValue, dereference, findItemInStyle, findItemInTheme, getParent, getAllThemes, applyStyle, clearStyles, getResolvedResource) |
+| **Q4 AAR 비용 추정** | 2-5초 cold-start | **sub-second 예상** (27/41 보유, 855KB 합산, I/O ~0.12초 실측). wall-clock 진단 의무 |
+| **Q6 NEW** — R name canonicalization | 미언급 | **W3D3-α RJarSymbolSeeder 의 R$style underscore name (Theme_AxpFixture) ↔ XML dot name (Theme.AxpFixture) 매핑** 명시. Red test 우선 |
+| **Q6 NEW** — duplicate attr ID 정책 | 미언급 | 같은 attr 이름이 여러 R class (appcompat/material/...) 에 등록. seeder 의 first-wins/dedup 정책 명시 |
+| 자료구조 byNs | `Map<ResourceNamespace, NsBucket>` (3+ ns 가정) | 사실상 2-bucket (ANDROID + RES_AUTO). 자료구조 자체는 일반화 유지 |
+| LayoutlibRenderResources LOC | ~80 | **~250** (9 override + chain walker) |
+| 신규 unit test | ~25-30 | **~40-50** (resolver chain edge case + canonicalization 추가) |
+| Q2 fallback 적용 surface | getStyle 만 | getStyle + getParent + findItemInStyle + findItemInTheme 일관 적용. byNs 순회 deterministic + duplicate 진단 |
 
 ---
 
@@ -34,17 +51,17 @@ fun `tier3 basic primary — activity_basic renders SUCCESS with non-empty PNG`(
 }
 ```
 
-contingency helper (`renderWithMaterialFallback`) 는 본 테스트에서 제거. `activity_basic_minimal.xml` 은 별도 `tier3_basic_minimal_smoke` 테스트로 carry 보존 (Q4 ξ + o 결정).
+contingency helper 제거. `activity_basic_minimal.xml` 은 별도 `tier3_basic_minimal_smoke` 테스트로 carry 보존 (Q4 ξ + o 결정).
 
-### 1.2 카운트 베이스라인 → 목표
+### 1.2 카운트 베이스라인 → 목표 (round 2 보정)
 
-| 메트릭 | 베이스라인 (W3D3-α 종결) | W3D4 목표 |
-|---|---|---|
-| unit PASS | 167 | ~190+ (+20-30) |
-| integration PASS | 12 | 13 (1 분리 +1) |
-| integration SKIP | 1 (tier3-glyph) | 1 |
-| 신규 main LOC | — | ~790 |
-| 신규 test LOC | — | ~600 |
+| 메트릭 | 베이스라인 | round 1 추정 | round 2 추정 |
+|---|---|---|---|
+| unit PASS | 167 | ~190+ | **~210+ (+40-50)** |
+| integration PASS | 12 | 13 | 13 |
+| integration SKIP | 1 (tier3-glyph) | 1 | 1 |
+| 신규 main LOC | — | ~790 | **~960** (resolver +170) |
+| 신규 test LOC | — | ~600 | **~780** (resolver chain +180) |
 
 ### 1.3 out-of-scope (carry 보존)
 
@@ -52,202 +69,335 @@ contingency helper (`renderWithMaterialFallback`) 는 본 테스트에서 제거
 - POST-W2D6-POM-RESOLVE.
 - CLI `--theme` 플래그, MCP renderRequest 의 themeName 필드.
 - sample-app 외 다른 fixture 의 multi-fixture 통합.
+- **full namespace-aware 모드** — round 2 가 traditional RES_AUTO 채택. namespace-aware 는 W4+ 후보 (callback/parser/seeder 동시 전환 필요, scope 큼).
 
 ---
 
-## 2. 아키텍처
+## 2. 아키텍처 (round 2)
 
-### 2.1 자료구조 (Q1 — A: namespace-aware 단일 bundle)
+### 2.1 자료구조 (Q1 mode 통일 — traditional RES_AUTO)
 
 ```
 LayoutlibResourceBundle (immutable, JVM-wide cache)
 └── byNs: Map<ResourceNamespace, NsBucket>
-    └── NsBucket
-        ├── byType:  Map<ResourceType, Map<String, ResourceValue>>
-        ├── styles:  Map<String, StyleResourceValue>
-        └── attrs:   Map<String, AttrResourceValue>
+    ├── [ANDROID]   → NsBucket: framework values (10 XML)
+    └── [RES_AUTO]  → NsBucket: app + 41 AAR values (collapsed)
 ```
 
-W3D1 `FrameworkResourceBundle` 의 자료구조 위에 namespace 한 층 추가. NsBucket 안의 byType/styles/attrs 는 W3D1 그대로.
+- 자료구조 일반화 유지 (`Map<Namespace, ...>`) — W4+ namespace-aware 전환 시 재구성 비용 0.
+- 현 round 2 에서는 사실상 ANDROID + RES_AUTO 2 bucket 만 사용.
+- AAR 별 `package` 는 dedupe 진단 용으로만 별도 보존 (resource 자체는 RES_AUTO bucket 통합).
 
-### 2.2 Resolver
+### 2.2 Resolver (Q3 σ FULL — 9 override)
 
 ```
-LayoutlibRenderResources(bundle: LayoutlibResourceBundle, themeName: String)
-  ├── getDefaultTheme()              → bundle.getStyleByName(themeName)              // ns-agnostic
+LayoutlibRenderResources(bundle, themeName)
+  ├── getDefaultTheme()              → mDefaultTheme
+  ├── getAllThemes()                 → mThemeStack (default theme + ancestor walk, ordered)
   ├── getStyle(ref)                  → bundle.getStyleExact(ref)
-  │                                    ?: bundle.getStyleByName(ref.name)            // ns-exact → ns-agnostic
-  ├── getUnresolvedResource(ref)     → bundle.getResource(ref)                       // ns-exact only
-  └── getResolvedResource(ref)       → getUnresolvedResource(ref)                    // (Q4 ρ) base 위임
+  │                                    ?: bundle.getStyleByName(ref.name)             // ns-exact-then-name
+  ├── getParent(style)               → bundle.getStyleExact(parentRef)
+  │                                    ?: bundle.getStyleByName(style.parentStyleName) // ns-exact-then-name
+  ├── findItemInStyle(style, ref)    → style.getItem(ref) ?: walk(style.parent.getItem(ref) ...)
+  ├── findItemInTheme(ref)           → for theme in mThemeStack: findItemInStyle(theme, ref)
+  ├── resolveResValue(value)         → if (value is ref) chainWalk(value) else value
+  ├── dereference(value)             → resolveResValue(value)  // alias
+  ├── getUnresolvedResource(ref)     → bundle.getResource(ref)
+  └── getResolvedResource(ref)       → resolveResValue(getUnresolvedResource(ref))
+
+  + applyStyle(style, force)  → mThemeStack 갱신 (Bridge 가 호출)
+  + clearStyles() / clearAllThemes() → mThemeStack reset
 ```
 
-3 entry-point — `getStyle` 만 ns-agnostic fallback (parent chain 보존). resource value 는 ns-exact 만.
+ns-exact-then-name fallback 은 `getStyle / getParent` 모두 일관 적용. `findItemInStyle` 은 style.getItem(ref) → parent walk (ns-agnostic getParent 활용 → cross-ns chain 따라감). `findItemInTheme` 은 mThemeStack 순회.
+
+**chain walker 알고리즘** (resolveResValue):
+```
+function resolveResValue(value: ResourceValue): ResourceValue?
+    seen = HashSet()
+    current = value
+    loop (max 10 hops, circular detection)
+        if current.value 가 "@type/name" or "?attr/name" pattern 이면
+            ref = parseReference(current.value)
+            if ref in seen → return current  // circular abort
+            seen.add(ref)
+            current =
+                if ref.type == ATTR → findItemInTheme(ref)
+                else → getUnresolvedResource(ref)
+            if current == null → return null
+        else
+            return current
+```
 
 ### 2.3 Loader 계층
 
 ```
 LayoutlibResourceValueLoader.loadOrGet(Args(distDataDir, sampleAppRoot, runtimeClasspathTxt))
   ├── loadFramework(distDataDir/values)        → 10 framework XML → NsBucket(ANDROID)
-  ├── loadAppRes(sampleAppRoot/app/src/main/res/values)  → ~3 XML → NsBucket(RES_AUTO, app)
-  ├── loadAarRes(runtimeClasspathTxt)          → 41 AAR walker → N × NsBucket(<aar-ns>)
-  └── LayoutlibResourceBundle.build(allNsBuckets)
+  ├── loadAppRes(sampleAppRoot/app/src/main/res/values)  → ~3 XML → NsBucket(RES_AUTO) accumulator
+  ├── loadAarRes(runtimeClasspathTxt)          → 41 AAR walker
+  │   for each .aar:
+  │     - AndroidManifest.xml package 추출 (진단/dedupe-source 추적용)
+  │     - res/values/values.xml 부재 → System.err 1줄 + skip (γ)
+  │     - parse with namespace=RES_AUTO (mode 통일)
+  │     - entries 누적 to RES_AUTO accumulator + diagnostic 매핑 (entry → AAR package)
+  └── LayoutlibResourceBundle.build({ANDROID: framework, RES_AUTO: app+aar})
 ```
 
-JVM-wide cache key = `Args(...)` 3-tuple. 동일 (dist, sampleAppRoot, classpathTxt) 면 동일 bundle 재사용.
+JVM-wide cache key = `Args(...)` 3-tuple. 동일 (dist, sampleAppRoot, classpathTxt) 면 동일 bundle.
 
-### 2.4 Theme 의 cross-namespace parent chain
+**dedupe within RES_AUTO** (η round 2 보강):
+- SimpleValue / StyleDef: later-wins. AAR 순회 순서 = `runtime-classpath.txt` 순서 (Gradle deterministic). app 의 res 는 마지막에 처리되어 sample-app 정의가 AAR 정의를 override.
+- AttrDef: first-wins (W3D1 정책 보존).
+- duplicate detection: 같은 (type, name) 의 conflict 발견 시 `System.err` 1줄 — `[LayoutlibResourceBundle] dup style 'colorPrimary' from material/appcompat — adopting later`.
 
-`Theme.AxpFixture` (RES_AUTO, sample-app 정의) → `Theme.Material3.DayNight.NoActionBar` (com.google.android.material AAR) → `Theme.Material3.Light.NoActionBar` (동) → ... → `Theme.AppCompat.Light` (androidx.appcompat AAR) → `Theme.AppCompat` (동) → ... → `Theme` (ANDROID).
+### 2.4 Theme cross-ns parent chain (round 2)
 
-분산된 3+ namespace 의 style 들이 단일 bundle 안에 namespace 별로 저장. layoutlib base `RenderResources.resolveValue` 가 parent walk 시 name-only chain 따라가도, 우리의 `bundle.getStyleByName(name)` namespace-agnostic helper 가 모든 NsBucket 합집합 walk 로 응답.
+`Theme.AxpFixture` (RES_AUTO) → `Theme.Material3.DayNight.NoActionBar` (RES_AUTO, material AAR 출처) → `Theme.Material3.Light.NoActionBar` (RES_AUTO, material AAR) → ... → `Theme.AppCompat.Light` (RES_AUTO, appcompat AAR) → `Theme.AppCompat` (RES_AUTO) → ... → `Theme` (ANDROID).
 
----
+모든 non-framework parent 는 RES_AUTO bucket 의 single map 안에서 직접 lookup → ns-exact 가 그대로 hit. ANDROID 진입 시점 (Theme) 은 parent inference 가 framework name 임을 식별 (style name pattern + framework table 화이트리스트) 또는 Bridge 가 ANDROID ref 로 던질 때 ns-exact hit.
 
-## 3. 컴포넌트 분해
+## 3. 컴포넌트 분해 (round 2)
 
-### 3.1 신규 main (8 파일, ~790 LOC)
+### 3.1 신규 main (8 파일, ~960 LOC)
 
-| # | 파일 | 책임 | LOC est |
+| # | 파일 | 책임 | LOC est (round 2) |
 |---|---|---|---|
-| 1 | `resources/AppLibraryResourceConstants.kt` | RUNTIME_CLASSPATH_TXT_PATH, AAR_VALUES_XML_PATH, AAR_ANDROID_MANIFEST_PATH, MANIFEST_PACKAGE_REGEX | ~30 |
-| 2 | `resources/ParsedNsEntry.kt` | W3D1 ParsedEntry 의 namespace-tagged 변형 (SimpleValue/AttrDef/StyleDef + namespace 필드) | ~60 |
-| 3 | `resources/NsBucket.kt` | 단일 namespace 의 byType/styles/attrs immutable container | ~50 |
-| 4 | `resources/NamespaceAwareValueParser.kt` | W3D1 FrameworkValueParser 의 일반화 (namespace 인자) | ~120 |
-| 5 | `resources/AarResourceWalker.kt` | runtime-classpath.txt → ZipFile → AndroidManifest package 추출 + values.xml 파싱 + (γ) skip + (δ) regex | ~150 |
-| 6 | `resources/LayoutlibResourceBundle.kt` | namespace-aware 통합 bundle. ns-agnostic + ns-exact getStyle. cross-ns parent inference | ~180 |
-| 7 | `resources/LayoutlibResourceValueLoader.kt` | 3-입력 통합 loader. JVM-wide cache (3-tuple key) | ~120 |
-| 8 | `resources/LayoutlibRenderResources.kt` | namespace-aware RenderResources subclass | ~80 |
+| 1 | `resources/AppLibraryResourceConstants.kt` | RUNTIME_CLASSPATH_TXT_PATH, AAR_VALUES_XML_PATH, AAR_ANDROID_MANIFEST_PATH, MANIFEST_PACKAGE_REGEX, MAX_REF_HOPS=10 | ~40 |
+| 2 | `resources/ParsedNsEntry.kt` | namespace-tagged variant (round 2 에서는 RES_AUTO/ANDROID 만 사용) + sourcePackage diagnostic 필드 | ~70 |
+| 3 | `resources/NsBucket.kt` | byType/styles/attrs immutable container | ~50 |
+| 4 | `resources/NamespaceAwareValueParser.kt` | W3D1 parser 일반화 (namespace 인자) | ~120 |
+| 5 | `resources/AarResourceWalker.kt` | runtime-classpath.txt → ZipFile → values.xml 파싱. namespace=RES_AUTO 고정. AAR package 는 진단 출력 only | ~140 |
+| 6 | `resources/LayoutlibResourceBundle.kt` | byNs + getStyleExact/getStyleByName/getResource. dedupe 진단 + ANDROID/RES_AUTO 2-bucket build | ~200 |
+| 7 | `resources/LayoutlibResourceValueLoader.kt` | 3-입력 통합. JVM-wide cache. wall-clock 진단 출력 | ~140 |
+| 8 | `resources/LayoutlibRenderResources.kt` | **9 override + chain walker + theme stack 관리** (Q3 σ FULL) | ~250 |
 
 ### 3.2 변경 (4 파일)
 
 | 파일 | 변경 |
 |---|---|
 | `LayoutlibRenderer.kt` | line 174 `FrameworkRenderResources` → `LayoutlibRenderResources(bundle, themeName)`. 생성자 5번째 인자 themeName |
-| `SharedLayoutlibRenderer.kt` | RendererArgs 4-tuple → 5-tuple (themeName 추가). getOrCreate 시그니처 |
-| `session/SessionConstants.kt` | DEFAULT_FRAMEWORK_THEME 보존 + `DEFAULT_FIXTURE_THEME = "Theme.AxpFixture"` 신규 추가 |
-| `session/SessionParamsFactory.kt` | (없음 — Q4 ρ 결정에 따라 setTheme 호출 추가 안 함) |
+| `SharedLayoutlibRenderer.kt` | RendererArgs 4-tuple → 5-tuple |
+| `session/SessionConstants.kt` | `DEFAULT_FIXTURE_THEME = "Theme.AxpFixture"` 추가 |
+| `classloader/RJarSymbolSeeder.kt` (round 2 NEW) | **R$style 의 underscore name (`Theme_AxpFixture`) → dot name (`Theme.AxpFixture`) canonicalization 추가**. duplicate attr ID dedupe 정책 명시 (first-wins per name) |
 
-### 3.3 삭제 / rename (W3D1 흡수)
+### 3.3 삭제 / rename (W3D1 흡수, round 1 동일)
 
-| 기존 | 후속 | 이유 |
-|---|---|---|
-| `resources/FrameworkResourceBundle.kt` | **삭제** | LayoutlibResourceBundle 흡수 |
-| `resources/FrameworkRenderResources.kt` | **삭제** | LayoutlibRenderResources 대체 |
-| `resources/FrameworkResourceValueLoader.kt` | **삭제** | LayoutlibResourceValueLoader.loadFramework() 흡수 |
-| `resources/FrameworkValueParser.kt` | rename → `NamespaceAwareValueParser.kt` | 로직 보존 + namespace 인자 |
-| `resources/ParsedEntry.kt` | rename → `ParsedNsEntry.kt` | namespace 필드 추가 |
-| `resources/ResourceLoaderConstants.kt` | **유지** | REQUIRED_FILES (10 framework XML) |
-| `resources/StyleParentInference.kt` | **유지** | namespace 무관 알고리즘 |
+| 기존 | 후속 |
+|---|---|
+| `FrameworkResourceBundle.kt` | 삭제 (LayoutlibResourceBundle 흡수) |
+| `FrameworkRenderResources.kt` | 삭제 (LayoutlibRenderResources 대체) |
+| `FrameworkResourceValueLoader.kt` | 삭제 (LayoutlibResourceValueLoader.loadFramework() 흡수) |
+| `FrameworkValueParser.kt` | rename → `NamespaceAwareValueParser.kt` |
+| `ParsedEntry.kt` | rename → `ParsedNsEntry.kt` |
+| `ResourceLoaderConstants.kt` | 유지 |
+| `StyleParentInference.kt` | 유지 |
 
-### 3.4 신규 test (8 파일, ~600 LOC)
+### 3.4 신규 test (10 파일, ~780 LOC, ~40-50 case)
 
-| # | 파일 | 케이스 수 |
-|---|---|---|
-| 1 | `AppLibraryResourceConstantsTest.kt` | ~3 (path/regex 무결성) |
-| 2 | `NamespaceAwareValueParserTest.kt` | ~5 (W3D1 동등 + namespace 정확 태깅) |
-| 3 | `AarResourceWalkerTest.kt` | ~5 (happy + γ skip + δ regex + 41 카운트) |
-| 4 | `LayoutlibResourceBundleTest.kt` | ~6 (ns-agnostic/exact + η dedupe + cross-ns parent) |
-| 5 | `LayoutlibResourceValueLoaderTest.kt` | ~4 (3-입력 통합 + cache 3-tuple) |
-| 6 | `LayoutlibRenderResourcesTest.kt` | ~5 (defaultTheme + ns-exact 분기 + ρ resolved=unresolved) |
-| 7 | `MaterialFidelityIntegrationTest.kt` (unit-level) | ~3 (real bundle Theme.AxpFixture parent walk to Theme) |
-| 8 | (수정) `LayoutlibRendererIntegrationTest.kt` | tier3_basic_primary + tier3_basic_minimal_smoke 분리 |
+| # | 파일 | 케이스 수 | round 2 추가 항목 |
+|---|---|---|---|
+| 1 | `AppLibraryResourceConstantsTest` | ~3 | path/regex 무결성 |
+| 2 | `NamespaceAwareValueParserTest` | ~5 | W3D1 동등 + namespace 정확 태깅 |
+| 3 | `AarResourceWalkerTest` | ~6 | happy + γ skip + δ regex + 27/41 카운트 + **wall-clock 진단** + sourcePackage diagnostic |
+| 4 | `LayoutlibResourceBundleTest` | ~7 | ns-agnostic/exact + η dedupe + duplicate diagnostic 로그 + cross-ns parent + RES_AUTO collapse 정합 |
+| 5 | `LayoutlibResourceValueLoaderTest` | ~5 | 3-입력 통합 + cache 3-tuple + wall-clock 측정 |
+| 6 | `LayoutlibRenderResourcesTest` (round 2 확장) | ~10 | defaultTheme + ns-exact/agnostic + **chain walker (`?attr` + `@color`)** + **circular detection** + **theme stack walk** + dereference + applyStyle/clearStyles |
+| 7 | **`RNameCanonicalizationTest` (round 2 NEW)** | ~3 | R$style underscore↔dot 변환, RJarSymbolSeeder 와 bundle 의 name 정합 |
+| 8 | **`RDuplicateAttrIdTest` (round 2 NEW)** | ~3 | 같은 attr 이름이 여러 R class 에 있을 때 first-wins per name + diagnostic |
+| 9 | `MaterialFidelityIntegrationTest` (unit-level) | ~4 | real bundle Theme.AxpFixture parent walk to Theme + `?attr/colorPrimary` chain expansion |
+| 10 | (수정) `LayoutlibRendererIntegrationTest` | tier3_basic_primary + tier3_basic_minimal_smoke | (ξ) 분리 |
 
-신규 unit ~25-30 case (167 → 192-197). integration 12 → 13.
+**Red-test-first 의무화 (Codex Q6)**: 구현 전 #6 (chain walker), #7 (canonicalization), #8 (duplicate attr) 테스트가 fail 하는 상태에서 시작. green 으로 가는 과정이 implementation 의 정합성 증거.
 
 ---
 
-## 4. AAR walker 정책 (Q3 결정)
+## 4. AAR walker 정책 (round 2)
 
-### 4.1 (γ) values.xml 부재 AAR — lenient + 명시 로깅
+### 4.1 (γ) values.xml 부재 AAR — lenient + 명시 로깅 (round 1 동일)
 
 ```kotlin
 val valuesEntry = zip.getEntry("res/values/values.xml")
 if (valuesEntry == null) {
     System.err.println("[AarResourceWalker] $aarPath skipped — res/values/values.xml 없음")
-    return null  // 호출자 caller 가 null 결과 누적 안 함
+    return null
 }
 ```
 
-41 AAR 중 1 개 이상 PASS 못 하면 `LayoutlibResourceValueLoader.build` 가 sanity guard 로 IllegalStateException ("AAR 0개").
+27/41 보유 (Codex 실측). 1+ AAR 도 PASS 못 하면 sanity guard 로 IllegalStateException.
 
-### 4.2 (δ) AndroidManifest.xml 의 package 추출
+### 4.2 (δ) AndroidManifest.xml 의 package 추출 — **진단/dedupe-source 추적 only**
+
+round 1 에서는 namespace 결정 입력. round 2 에서는 **diagnostic only** (mode 통일로 모든 AAR = RES_AUTO):
 
 ```kotlin
-val manifestEntry = zip.getEntry("AndroidManifest.xml")
-    ?: throw IllegalStateException("$aarPath: AndroidManifest.xml 없음 — AAR 형식 위반")
 val manifestText = zip.getInputStream(manifestEntry).bufferedReader().use { it.readText() }
-val match = MANIFEST_PACKAGE_REGEX.find(manifestText)
+val pkg = MANIFEST_PACKAGE_REGEX.find(manifestText)?.groupValues?.get(1)
     ?: throw IllegalStateException("$aarPath: AndroidManifest 의 package 추출 실패")
-val pkg = match.groupValues[1]
-val namespace = ResourceNamespace.fromPackageName(pkg)
+require(pkg.isNotEmpty()) { "$aarPath: package empty" }
+// pkg 는 ParsedNsEntry.sourcePackage 로 보존 — duplicate diagnostic 에서 활용
 ```
 
-`MANIFEST_PACKAGE_REGEX = Regex("""package\s*=\s*"([^"]+)"""")`. AAR 의 manifest 는 plain text 표준 (binary XML 아님).
+### 4.3 (η) per-namespace dedupe (round 2 보강)
 
-### 4.3 (η) per-namespace dedupe
+namespace 통일로 RES_AUTO 안 모든 entry collapse. dedupe 정책:
+- SimpleValue / StyleDef: later-wins. 순회 순서 = `runtime-classpath.txt` 순서 + 마지막 sample-app res. Gradle 결정성 의존.
+- AttrDef: first-wins.
+- conflict 시 진단 로그: `[LayoutlibResourceBundle] dup <type> '<name>' from <pkgA>/<pkgB> — adopting <winner>` (Codex Q2 권고).
 
-namespace 가 같은 entry 만 dedupe 대상. W3D1 정책 그대로:
+deterministic 보장: `byNs.values` 순회 시 ANDROID → RES_AUTO 고정 (LinkedHashMap insertion order).
 
-- SimpleValue / StyleDef: later-wins (runtime-classpath.txt 순서가 결정)
-- AttrDef: first-wins (W3D1 pair-review F1 보존)
+### 4.4 wall-clock 진단 (round 2 NEW, Codex Q4)
 
-namespace 가 다르면 (e.g., `colorPrimary` 가 ANDROID 와 RES_AUTO 양쪽) 별도 NsBucket 에 독립 보존.
+```kotlin
+val t0 = System.nanoTime()
+val frameworkBucket = loadFramework(...)
+val tFw = (System.nanoTime() - t0) / 1_000_000
+val tApp = ... // 비슷
+val tAar = ...
+System.err.println(
+    "[LayoutlibResourceValueLoader] cold-start framework=${tFw}ms app=${tApp}ms aar=${tAar}ms total=${tFw+tApp+tAar}ms"
+)
+```
+
+Codex 실측: I/O ~0.12초. parser 포함 sub-second 예상. 측정값으로 spec 의 "수 초" 추정 폐기.
 
 ---
 
-## 5. RenderResources 시맨틱 (Q4 ρ)
+## 5. Resolver 시맨틱 (Q3 σ FULL — round 2 핵심 변경)
 
-### 5.1 위임 모델
-
-layoutlib base `RenderResources.resolveValue(ResourceValue)` 는 production-grade — `?attr/X` 의 theme stack walk, `@android:color/Y` 의 namespace dispatch, circular detection 까지 포함. 우리 subclass 는 entry-point 만 정확 구현:
+### 5.1 9 override 의 자세한 구현
 
 ```kotlin
-override fun getDefaultTheme(): StyleResourceValue = mDefaultTheme
-override fun getStyle(ref: ResourceReference): StyleResourceValue? {
-    // ns-exact 우선 → 미스 시 ns-agnostic name-only fallback.
-    // values.xml 파싱 시점에 parent="Theme.AppCompat" 의 namespace 는 미지 (AAPT 미통과 plain XML).
-    // Bridge 의 parent walk 가 wrong-ns ref 던질 때 chain 끊어짐 방지.
-    return bundle.getStyleExact(ref) ?: bundle.getStyleByName(ref.name)
+class LayoutlibRenderResources(
+    private val bundle: LayoutlibResourceBundle,
+    private val themeName: String,
+) : RenderResources() {
+
+    private val mDefaultTheme: StyleResourceValue = bundle.getStyleByName(themeName)
+        ?: StyleResourceValueImpl(
+            ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.STYLE, themeName),
+            null, null,
+        )
+
+    // theme stack — applyStyle / clearStyles 가 갱신. 초기엔 default theme + parent walk.
+    private val mThemeStack: MutableList<StyleResourceValue> = mutableListOf<StyleResourceValue>().apply {
+        add(mDefaultTheme)
+        var cur: StyleResourceValue? = mDefaultTheme
+        var hops = 0
+        while (cur != null && hops < ResourceLoaderConstants.MAX_THEME_HOPS) {
+            val parent = getParent(cur)
+            if (parent == null) break
+            add(parent)
+            cur = parent
+            hops++
+        }
+    }
+
+    override fun getDefaultTheme(): StyleResourceValue = mDefaultTheme
+
+    override fun getAllThemes(): List<StyleResourceValue> = mThemeStack.toList()
+
+    override fun getStyle(ref: ResourceReference): StyleResourceValue? =
+        bundle.getStyleExact(ref) ?: bundle.getStyleByName(ref.name)
+
+    override fun getParent(style: StyleResourceValue): StyleResourceValue? {
+        val parentRef = style.parentStyle ?: return resolveByName(style.parentStyleName)
+        return bundle.getStyleExact(parentRef) ?: bundle.getStyleByName(parentRef.name)
+    }
+
+    private fun resolveByName(name: String?): StyleResourceValue? =
+        name?.let { bundle.getStyleByName(it) }
+
+    override fun getUnresolvedResource(ref: ResourceReference): ResourceValue? =
+        bundle.getResource(ref)
+
+    override fun getResolvedResource(ref: ResourceReference): ResourceValue? {
+        val unresolved = getUnresolvedResource(ref) ?: return null
+        return resolveResValue(unresolved)
+    }
+
+    override fun resolveResValue(value: ResourceValue?): ResourceValue? {
+        if (value == null) return null
+        var current: ResourceValue = value
+        val seen = HashSet<ResourceReference>()
+        var hops = 0
+        while (hops < AppLibraryResourceConstants.MAX_REF_HOPS) {
+            val text = current.value ?: return current
+            val refLike = parseRef(text) ?: return current
+            if (seen.contains(refLike)) {
+                System.err.println("[LayoutlibRenderResources] circular ref detected: ${current.name} → $refLike")
+                return current
+            }
+            seen.add(refLike)
+            val next = if (refLike.resourceType == ResourceType.ATTR) {
+                findItemInTheme(refLike) ?: return current
+            } else {
+                getUnresolvedResource(refLike) ?: return current
+            }
+            current = next
+            hops++
+        }
+        return current
+    }
+
+    override fun dereference(value: ResourceValue?): ResourceValue? = resolveResValue(value)
+
+    override fun findItemInStyle(
+        style: StyleResourceValue,
+        ref: ResourceReference,
+    ): ResourceValue? {
+        var current: StyleResourceValue? = style
+        var hops = 0
+        while (current != null && hops < AppLibraryResourceConstants.MAX_THEME_HOPS) {
+            val item = current.getItem(ref)
+            if (item != null) return item
+            current = getParent(current)
+            hops++
+        }
+        return null
+    }
+
+    override fun findItemInTheme(ref: ResourceReference): ResourceValue? {
+        for (theme in mThemeStack) {
+            val item = findItemInStyle(theme, ref)
+            if (item != null) return item
+        }
+        return null
+    }
+
+    override fun applyStyle(style: StyleResourceValue, force: Boolean) {
+        if (force) mThemeStack.clear()
+        if (!mThemeStack.contains(style)) mThemeStack.add(0, style)  // top of stack
+    }
+
+    override fun clearStyles() { mThemeStack.clear(); mThemeStack.add(mDefaultTheme) }
+
+    override fun clearAllThemes() { mThemeStack.clear() }
 }
-override fun getUnresolvedResource(ref: ResourceReference): ResourceValue? =
-    bundle.getResource(ref) // ns-exact 만 — value 는 의미적으로 정확 ns 매칭 필수 (동명 다른 의미)
-override fun getResolvedResource(ref: ResourceReference): ResourceValue? =
-    getUnresolvedResource(ref)
 ```
 
 ### 5.2 LayoutlibResourceBundle 의 lookup API
 
 ```kotlin
 class LayoutlibResourceBundle(...) {
-    /** ns-exact style lookup. 정상 경로. */
     fun getStyleExact(ref: ResourceReference): StyleResourceValue? =
         byNs[ref.namespace]?.styles?.get(ref.name)
 
-    /** ns-agnostic style lookup. parent chain 의 plain-text ref fallback 용.
-     *  순회 순서: ANDROID → RES_AUTO → 각 AAR ns. 첫 매치 반환. */
-    fun getStyleByName(name: String): StyleResourceValue? =
-        byNs.values.firstNotNullOfOrNull { it.styles[name] }
+    fun getStyleByName(name: String): StyleResourceValue? {
+        // deterministic ANDROID → RES_AUTO 순회, 첫 매치
+        for (bucket in byNs.values) {
+            bucket.styles[name]?.let { return it }
+        }
+        return null
+    }
 
-    /** ns-exact resource lookup. value 는 항상 ns-exact (동명 다른 의미 보존). */
     fun getResource(ref: ResourceReference): ResourceValue? =
         byNs[ref.namespace]?.byType?.get(ref.resourceType)?.get(ref.name)
 }
 ```
 
-`getStyleByName` 만 ns-agnostic — parent walk 의 plain-text fallback. 자주 호출되지 않으므로 최적화 불필요.
-
-### 5.3 default theme fallback (W3D1 LM-3 보존)
-
-```kotlin
-private val mDefaultTheme: StyleResourceValue = bundle.getStyleByName(themeName)
-    ?: StyleResourceValueImpl(
-        ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.STYLE, themeName),
-        /* parentStyle */ null,
-        /* libraryName */ null,
-    )
-```
-
-bundle 내 themeName style 이 없어도 empty StyleResourceValueImpl. layoutlib base 가 self-chain 만 수행하고 NPE 안 남.
+`byNs` 는 LinkedHashMap (insertion order ANDROID → RES_AUTO). 순회 결정성 보장.
 
 ---
 
@@ -256,119 +406,159 @@ bundle 내 themeName style 이 없어도 empty StyleResourceValueImpl. layoutlib
 ### 6.1 Cold-start
 
 ```
-SharedLayoutlibRenderer.getOrCreate(dist, fixture, sampleAppRoot, themeName="Theme.AxpFixture", fallback=null)
-  └→ RendererArgs cache miss → new LayoutlibRenderer(...)
+SharedLayoutlibRenderer.getOrCreate(dist, fixture, sampleAppRoot, "Theme.AxpFixture", null)
+  └→ RendererArgs miss → new LayoutlibRenderer(...)
 
 LayoutlibRenderer.renderViaLayoutlib("activity_basic.xml")
   ├→ LayoutlibResourceValueLoader.loadOrGet(Args(distDataDir, sampleAppRes, classpathTxt))
-  │     ├→ loadFramework      → 10 XML → NsBucket(ANDROID)
-  │     ├→ loadAppRes          → ~3 XML → NsBucket(RES_AUTO sample-app)
-  │     ├→ loadAarRes          → 41 AAR walker → N NsBucket
-  │     │     for each .aar in classpath:
-  │     │       ZipFile → AndroidManifest.xml package 추출 (δ)
-  │     │       res/values/values.xml 부재 → skip + 1줄 로깅 (γ)
-  │     │       NamespaceAwareValueParser.parse(stream, namespace)
-  │     └→ LayoutlibResourceBundle.build(allNsBuckets)
-  │           per-ns dedupe (η)
-  │           cross-ns parent inference (StyleParentInference name-only)
-  │           ConcurrentHashMap put → return
-  └→ LayoutlibRenderResources(bundle, "Theme.AxpFixture") → SessionParams.resources
+  │     ├→ loadFramework         → 10 XML → NsBucket(ANDROID)         [t=N1ms]
+  │     ├→ loadAppRes             → ~3 XML → NsBucket(RES_AUTO) acc    [t=N2ms]
+  │     ├→ loadAarRes             → 41 AAR walker → 27 with values
+  │     │     for each AAR:
+  │     │       ZipFile → manifest package (진단)
+  │     │       values.xml 부재 → skip + 1줄 로깅
+  │     │       parse with namespace=RES_AUTO → entries 누적          [t=N3ms]
+  │     │       sourcePackage 매핑 보존
+  │     └→ LayoutlibResourceBundle.build({ANDROID: framework, RES_AUTO: app+aar})
+  │           dedupe + duplicate 진단 로그
+  │           cross-ns style parent inference (StyleParentInference)
+  │           ConcurrentHashMap put → 진단 출력 (cold-start ${total}ms)
+  └→ LayoutlibRenderResources(bundle, "Theme.AxpFixture")
+       ctor 에서 mThemeStack 초기화 (default theme + parent walk via getParent ns-exact-then-name)
+       → SessionParams.resources
 ```
 
-### 6.2 Bridge 의 reverse callback
+### 6.2 Bridge 의 reverse callback (round 2)
 
 ```
 Bridge.createSession(params) → inflate
-  └→ RenderResources base 의 resolveValue / resolveResource 호출
-       getStyle(ResourceReference("Theme.AxpFixture", RES_AUTO))
-         → bundle.getStyleExact(ref) HIT (RES_AUTO NsBucket.styles["Theme.AxpFixture"])
-         → parent="Theme.Material3.DayNight.NoActionBar" (ns 정보 없음 — plain-text values.xml)
-       getStyle(ResourceReference("Theme.Material3.DayNight.NoActionBar", ?))
-         → bundle.getStyleExact(ref) MISS (Bridge 가 RES_AUTO 던지면 RES_AUTO 에 없음)
-         → bundle.getStyleByName(ref.name) HIT (material AAR ns NsBucket)
-       ... (재귀 walk: 동일 ns-exact → ns-agnostic 패턴 으로 Theme.AppCompat → Theme 까지)
+  ├→ getDefaultTheme()         → mDefaultTheme (Theme.AxpFixture)
+  ├→ applyStyle(...) / clearStyles() → mThemeStack 갱신
+  ├→ findItemInTheme(attr_ref)   → for theme in stack: findItemInStyle(theme, attr_ref)
+  │     findItemInStyle 가 style 의 items 검사 → parent walk
+  ├→ resolveResValue(value)    → chain walker (?attr → findItemInTheme, @ref → getUnresolvedResource)
+  └→ getResolvedResource(ref) → unresolved → resolveResValue
 ```
 
----
-
-## 7. 위험 / contingency
-
-### 7.1 Material3 vs MaterialComponents 핸드오프 오기 (해결됨)
-
-핸드오프 §1 가 `Theme.MaterialComponents.DayNight.NoActionBar` 를 명시했으나 실 themes.xml 은 `Theme.Material3.DayNight.NoActionBar`. parent chain 자체 다름 (`Theme.Material3.* → Theme.MaterialComponents.Light.* → Theme.AppCompat.*`). 본 spec 은 actual themes.xml 에 정합.
-
-### 7.2 layoutlib 의 Bridge 가 던지는 ResourceReference namespace 일관성
-
-가설: Bridge 가 `getStyle(ref)` 에 항상 ns-exact ref 를 던질지, 일부 케이스에 RES_AUTO 던질지 불확실. **mitigation**: `LayoutlibRenderResources.getStyle` override 가 `bundle.getStyleExact(ref) ?: bundle.getStyleByName(ref.name)` 2 단계. ns-exact 정확 ref 면 첫 단계 hit, plain-text values.xml 의 parent chain 이 wrong-ns ref 로 쳐도 ns-agnostic fallback 이 chain 보존.
-
-empirical 검증: `MaterialFidelityIntegrationTest` 의 unit-level walker 가 layoutlib 없이 `Theme.AxpFixture` 부터 `Theme` 까지 직접 walk → 모든 단계 매칭 검증.
-
-### 7.3 41 AAR 의 values.xml 보유 비율
-
-추정: ~30 개가 보유 (resource-bearing AAR). ~11 개는 code-only (e.g., `concurrent-futures`, `versionedparcelable`). (γ) lenient skip 으로 robust.
-
-empirical: `AarResourceWalkerTest` 의 진단 출력으로 실 카운트 보고.
-
-### 7.4 LM-α-C 재발 가능성
-
-α 의 contingency keyword 매칭이 W4+ 다른 fixture 에서 새 keyword (e.g., `MDC` family) 로 또 surface 가능. 본 W3D4 가 root cause (theme resolution 정확화) 해결 → α contingency 는 deprecated → `tier3_basic_primary` 로 강제 PASS.
-
-### 7.5 LM-W3D3-A 회피 (페어 convergent → empirical 누락 위험)
-
-페어 의견만 신뢰하지 않고 모든 empirical-verifiable claim 직접 측정 (5.4 의 진단 출력 + 7.3 카운트). LM-W3D3-A / LM-α-A 에서 학습한 규율.
+모든 Bridge 호출 path 가 구체적 override 로 dispatch. base = null 의 chain 끊김 위험 차단.
 
 ---
 
-## 8. 결정 기록 (Q1-Q4)
+## 7. 위험 / contingency (round 2 보강)
 
-| Q | 결정 | 근거 |
-|---|---|---|
-| Q1 (bundle 아키텍처) | **A** namespace-aware 단일 | cross-ns parent walk 보존, W3D1 자료구조 흡수 |
-| Q2 (themeName 도달) | **2** RendererArgs 5-tuple cache key | 동일 process multi-theme 충돌 방지, free 한 줄 |
-| Q3a (γ) | values.xml 부재 lenient + 로깅 | strict false-fail 회피, 디버깅 신호 |
-| Q3b (δ) | AndroidManifest.xml package 추출 | AAR 자체 정보, cache layout 가정 X |
-| Q3c (η) | per-namespace dedupe (W3D1 정책) | layoutlib RenderResources API 정합 |
-| Q4a (ξ) | helper 제거 + 2 테스트 분리 | dead code 제거 + minimal carry 보존 |
-| Q4b (o) | activity_basic_minimal.xml 영구 | cost-near-zero, future regression detector |
-| Q4c (ρ) | resolved=unresolved (base 위임) | layoutlib base resolveValue 신뢰, redundant 회피 |
+### 7.1 R name canonicalization (Codex Q6 NEW)
+
+W3D3-α 의 `RJarSymbolSeeder` 가 R$style 클래스의 field 를 walk → `Theme_AxpFixture` (underscore) name 으로 emit. 그러나 우리 bundle 은 XML 파싱으로 `Theme.AxpFixture` (dot) name 등록. ID 역참조 시 mismatch.
+
+**해결**: `RJarSymbolSeeder` 의 R$style 처리 단계에서 underscore → dot 매핑 추가 — `Theme_AxpFixture` 를 보면 `Theme.AxpFixture` 로 등록. R$attr/R$dimen/R$color 등 다른 type 은 단순 (underscore 가 의미 있는 separator 아님 — name 그대로).
+
+**red test 우선** (Codex 권고): `RNameCanonicalizationTest` 가 mock R class 에 `Theme_AxpFixture` 필드 + bundle 에 `Theme.AxpFixture` style 를 두고 ID 역참조 → bundle hit 검증.
+
+### 7.2 Duplicate attr ID across R classes (Codex Q6 NEW)
+
+같은 attr 이름 (`colorPrimary`) 가 multiple R class (appcompat R$attr / material R$attr / 기타) 에 register. 다른 ID 값. seeder 가 first-wins 으로 dedup 안 하면 layoutlib 이 잘못된 ID 받아 lookup 실패.
+
+**해결**: `RJarSymbolSeeder` 에 `seenAttrNames: HashSet<String>` 추가. 첫 등록 후 같은 name 의 다른 R class 등장 시 skip + 진단 로그 (`[RJarSymbolSeeder] dup attr 'colorPrimary' from <pkg> — first-wins, kept ${earlierId}`).
+
+**red test 우선**: `RDuplicateAttrIdTest` 가 2개 mock R$attr 클래스 (다른 package, 동명 attr) 시드 → seeder 의 first-wins 검증.
+
+### 7.3 Material3 vs MaterialComponents 핸드오프 오기 (round 1 그대로 해결)
+
+핸드오프의 MaterialComponents 가 실 Material3. spec 은 actual themes.xml 에 정합.
+
+### 7.4 Resolver 의 chain walker MAX_REF_HOPS (round 2)
+
+cycle 또는 deep chain 의 무한 루프 방지. `MAX_REF_HOPS = 10`, `MAX_THEME_HOPS = 20`. 초과 시 진단 로그 + 현재 value 반환 (graceful — Bridge 가 처리).
+
+**근거**: 일반 Material theme 의 attr ref chain depth 는 보통 3-5 hop. theme 의 parent depth 는 ~10 (Theme.Material3.* → Theme.AppCompat.* → Theme). 양쪽 다 2-3 배 buffer.
+
+### 7.5 LM-α-C 재발 가능성 (round 1 보존)
+
+α 의 contingency keyword matching 이 새 fixture 에서 surface 가능. round 2 가 root cause (theme resolution 정확화 + canonicalization) 해결 → α contingency deprecated → `tier3_basic_primary` 강제 PASS.
+
+### 7.6 LM-W3D3-A 회피 (round 1 보존, round 2 강화)
+
+페어 round 1 자체가 LM-W3D3-A 의 적용 — convergent 하지만 empirical 검증 (Codex 의 27/41 + 855KB + 0.12s 실측, Claude 의 javap RR base null 검증) 가 verdict 의 신뢰성. round 2 implementation 에서도 wall-clock 진단 + canonicalization 검증으로 동일 규율.
+
+### 7.7 LM-G (Codex CLI bypass — round 1 동일)
+
+`codex exec --skip-git-repo-check --sandbox danger-full-access` 직접 CLI. codex-rescue subagent 사용 안 함.
 
 ---
 
-## 9. 페어 리뷰 질문 (Codex 라운드 1 entry point)
+## 8. 결정 기록 (round 2 최종)
 
-### Q1 — bundle 자료구조의 namespace 대칭성
-
-`byNs: Map<ResourceNamespace, NsBucket>` 의 key 동등성. `ResourceNamespace.RES_AUTO` 와 `ResourceNamespace.fromPackageName("com.fixture")` 가 distinct? layoutlib API 의 sample-app res 는 RES_AUTO 가 정합인가, packaged ns 가 정합인가?
-
-(Codex 의견 요청: 사용자 설계 결정에 따라 우리는 sample-app 의 res 를 RES_AUTO 로, AAR 의 res 를 named-package ns 로 분리 저장 가정. 정합?)
-
-### Q2 — Theme.AxpFixture 의 namespace 정확성
-
-`themes.xml` 의 `<style name="Theme.AxpFixture">` 은 sample-app 의 res. R class 는 com.fixture.* 로 컴파일되지만 layoutlib 의 RenderResources 입장에서 RES_AUTO 가 정합인가?
-
-(Codex 의견 요청: 우리는 RES_AUTO 가정. layoutlib base 가 ns-agnostic name-walk 하므로 정확한 ns 매칭은 부수. 본 가정에 위반 사례 알면 지적.)
-
-### Q3 — 41 AAR 의 walker 비용 (cold-start)
-
-41 AAR ZipFile open + manifest regex + values.xml stream 파싱이 첫 render 의 cold-start 비용. JVM-wide cache 로 1회만 발생하지만 실 측정 필요. 추정 ~2-5 초 (W3D1 framework 10 XML ~200ms 기준 비율). 페어 의견: 추정 합당? 더 빠른 path 있나?
-
-### Q4 — getResolvedResource = getUnresolvedResource 의 layoutlib base 위임 가정
-
-W3D1 가 framework-only 환경에서 검증된 패턴. multi-namespace 에서도 base resolveValue 가 정확 chain walk? (특히 `?attr/colorPrimary` 가 Material3 theme item → AppCompat attr 까지 chain)
-
-(Codex 의견 요청: layoutlib RenderResources base 의 resolveValue 동작이 multi-ns 환경에서 chain 끊는 known issue 있나? 있다면 ρ 가 σ 로 전환되어야.)
+| Q | round 1 | round 2 | 근거 (페어 reviewer) |
+|---|---|---|---|
+| Q1 (bundle 모드) | A namespace-aware 단일 (hybrid app=RES_AUTO + AAR=named) | **traditional 통일** — 모든 non-framework = RES_AUTO | Codex: hybrid 는 not pure symmetric model. callback `isResourceNamespacingRequired()=false` + parser RES_AUTO 와 정합. namespace-aware 로 가려면 callback/parser/seeder 동시 전환 필요 (scope 큼) |
+| Q2 (themeName 도달) | 2 RendererArgs 5-tuple cache key | **2 그대로** | 페어 무영향 |
+| Q3a (γ values.xml lenient skip) | γ + 1줄 로깅 | **γ 그대로** | 페어 무영향 |
+| Q3b (δ AndroidManifest pkg) | namespace 결정 입력 | **진단/dedupe-source 추적용** (mode 통일로) | Codex Q1 권고 |
+| Q3c (η dedupe) | per-ns later-wins / first-wins | **RES_AUTO collapse 후 동일 정책 + duplicate 진단 로그** | Codex Q2 권고 (deterministic 순회, duplicate 가시화) |
+| Q4a (ξ test 분리) | helper 제거 + 2 테스트 분리 | **ξ 그대로** | 페어 무영향 |
+| Q4b (o minimal carry) | 영구 유지 | **o 그대로** | 페어 무영향 |
+| Q4c (resolver 위임) | ρ resolved=unresolved (base 위임) | **σ FULL** — 9 override (resolveResValue, dereference, findItemInStyle, findItemInTheme, getParent, getAllThemes, applyStyle, clearStyles, getResolvedResource) | Claude+Codex full convergent DISAGREE — base methods stub, ρ 는 resolution bypass. layoutlib-api 의 ResourceResolver 는 sdk-common 별도 |
+| **R-1 (NEW)** R name canonicalization | 미언급 | **Theme_AxpFixture (R underscore) → Theme.AxpFixture (XML dot) 매핑** + RJarSymbolSeeder 변경 | Codex Q6 권고 |
+| **R-2 (NEW)** Duplicate attr ID | 미언급 | **first-wins per name + 진단 로그** | Codex Q6 권고 |
+| **R-3 (NEW)** Wall-clock 진단 | 미언급 | **cold-start ms 측정 + 27/41 카운트 출력** | Codex Q4 권고 (실측 ~0.12초) |
+| **R-4 (NEW)** Red-test-first | 부분적 | **chain walker / canonicalization / duplicate attr 모두 red test 부터** | Codex Q6 권고 |
 
 ---
 
-## 10. acceptance gate
+## 9. 페어 리뷰 round 1 결과 (보존, round 2 plan 의 input)
+
+### 9.1 양 reviewer convergence
+
+| Q | Claude verdict | Codex verdict | 종합 |
+|---|---|---|---|
+| Q1 | NUANCED (equals 시맨틱 명시) | NUANCED (mode 통일 필요) | set-converge → mode 통일 채택 |
+| Q2 | AGREE (강한 javap 증거) | NUANCED (fallback OK 단 전체 surface) | set-converge → uniform fallback |
+| Q3 | DISAGREE (ρ → σ) | DISAGREE (resolution bypass) | **FULL convergence** → σ FULL |
+| Q4 | NUANCED (timing diagnostics) | NUANCED (sub-second 예상, empirical) | set-converge → empirical 보정 |
+| Q5 | AGREE | AGREE | **FULL convergence** |
+| Q6 | REVISE_REQUIRED (4 weak points) | NUANCED (R canonicalization + dup attr ID) | set-converge → both 적용 |
+
+### 9.2 pair-review 의 cross-family 가치
+
+- Codex 실측: 27/41 AAR 가 values.xml 보유, 855KB 합산, I/O ~0.12초 → spec 의 "2-5초" 추정 폐기.
+- Claude 의 javap 검증: RenderResources base 의 `resolveResValue/findItemInStyle/dereference/getParent/getAllThemes` 모두 null/empty stub 확정 → ρ 무너짐.
+- Codex NEW: R underscore↔dot 의 canonicalization 위험 + duplicate attr ID 정책 → W3D3-α 의 RJarSymbolSeeder 회귀 위험 차단.
+
+→ judge round 불필요. 양 reviewer 의 evidence-based critique 가 round 2 의 6개 결정 변경의 충분한 근거.
+
+---
+
+## 10. acceptance gate (round 2)
 
 W3D4 종결 판정:
 
 1. ✅ `tier3_basic_primary` PASS — `assertEquals("activity_basic.xml", ...)` 강제 + SUCCESS + PNG > 1000.
 2. ✅ `tier3_basic_minimal_smoke` PASS — minimal carry 보존.
-3. ✅ unit ~190+ PASS, 모든 신규 8 test 파일 PASS.
+3. ✅ unit ~210+ PASS, 모든 신규 10 test 파일 PASS (resolver chain 7 + canonicalization 8 + dup attr id 9 추가).
 4. ✅ integration 12 + 1 (분리 추가) = 13 PASS, 1 SKIP (tier3-glyph).
 5. ✅ BUILD SUCCESSFUL, smoke "ok".
-6. ✅ `docs/work_log/2026-04-29_w3d4-material-fidelity/` 생성 + handoff (carry 0 또는 다음 milestone).
-7. ✅ `docs/plan/08-integration-reconciliation.md` §7.7.6 에 close 1줄.
-8. ✅ MEMORY.md 갱신 (필요 시).
+6. ✅ wall-clock 진단 — cold-start total < 5초 (안전 buffer, 실 측 sub-second 기대).
+7. ✅ R name canonicalization 검증 — `RNameCanonicalizationTest` PASS.
+8. ✅ Duplicate attr ID dedup — `RDuplicateAttrIdTest` PASS.
+9. ✅ `docs/work_log/2026-04-29_w3d4-material-fidelity/` 생성 + handoff (carry 0 또는 다음 milestone).
+10. ✅ `docs/plan/08-integration-reconciliation.md` §7.7.6 에 close 1줄.
+11. ✅ MEMORY.md 갱신 (필요 시).
+
+---
+
+## 11. 다음 단계 (writing-plans 입력)
+
+이 spec 이 **GO 승인되면** writing-plans 스킬 invoke. plan v1 골격:
+
+- T1: AppLibraryResourceConstants + ParsedNsEntry + NsBucket (자료구조 + 상수)
+- T2: NamespaceAwareValueParser (W3D1 일반화)
+- T3: AarResourceWalker (γ + δ 진단 + wall-clock)
+- T4: LayoutlibResourceBundle (build + dedupe + 진단 로그)
+- T5: LayoutlibResourceValueLoader (3-입력 통합 + cache)
+- T6: LayoutlibRenderResources (9 override + chain walker + theme stack)
+- T7: RJarSymbolSeeder canonicalization (R-1) + duplicate attr ID (R-2)
+- T8: LayoutlibRenderer + SharedLayoutlibRenderer 통합 (themeName 5-tuple)
+- T9: integration test 분리 (tier3_basic_primary + tier3_basic_minimal_smoke)
+- T10: work_log + handoff + 08 §7.7.6 close
+
+각 task 는 TDD red-green + atomic commit. plan v1 작성 후 Codex+Claude 페어 round 2 (plan-review) 진행.
