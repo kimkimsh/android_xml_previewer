@@ -1,0 +1,31 @@
+docs/work_log/2026-04-29_w3d3-l3-classloader/next-session-handoff.md 읽고 W3D4 MATERIAL-FIDELITY 경로로 진행.
+
+W3D3-α 가 Branch (B) contingency (activity_basic_minimal.xml — Button) 로 T1 gate
+PASS 한 상태. 본 W3D4 의 목표는 contingency 를 발화시키지 않고 primary
+activity_basic.xml (MaterialButton 포함) 가 직접 SUCCESS 하도록 만드는 것:
+
+  1. sample-app 의 `Theme.AxpFixture` (Material3.DayNight) 와 transitive AAR 의
+     `res/values/values.xml` 을 parse 하여 RenderResources 에 inflate 시점 주입.
+  2. Theme parent chain 이 framework + appcompat + material 분산이므로 *모든* AAR 의
+     values.xml 이 namespace-aware 로 결합되어야 함.
+  3. SessionConstants.DEFAULT_FRAMEWORK_THEME 을 themeName parameter 로 일반화하고
+     Theme.AxpFixture 또는 적절한 sample-app theme 으로 전환.
+  4. integration test 의 primary assertion 강화 — `assertEquals("activity_basic.xml",
+     layoutName, "primary 로 SUCCESS")` 추가하여 contingency 발동 시 명시 fail.
+
+기존 W3D1 의 FrameworkResourceValueLoader / FrameworkRenderResources 가 직접 prior
+art (server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/resources/).
+본 W3D4 는 동일 패턴을 namespace 추가 + AAR walker 로 확장. 추정 ~500-1000 LOC.
+
+페어 리뷰 (Codex+Claude 1:1 직접 CLI, --skip-git-repo-check + --sandbox
+danger-full-access — codex-rescue subagent bypass per LM-G) 필수. 단계:
+spec round 1 → pair → spec round 2 → plan v1 → pair round 2 → plan v2 →
+subagent-driven 구현 → work_log + handoff.
+
+CLAUDE.md 규약 (Code Style — brace 스타일, no default params, Zero Tolerance for
+Magic Strings) 준수. 에이전트 팀과 스킬 적극 활용. Codex stalled-final pattern (LM-α-B)
+재발 시 single-source verdict (Claude empirical) + 명시 flagging 으로 진행.
+
+테스트 baseline: 167 unit + 12 integration PASS + 1 SKIP (tier3-glyph). 본 W3D4
+완료 시 167 → ~190+ unit, integration 12 PASS 유지 (LayoutlibRendererIntegrationTest
+가 primary 로 PASS).
