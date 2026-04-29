@@ -31,11 +31,43 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class MinimalLayoutlibCallback(
     private val viewClassLoaderProvider: () -> ClassLoader,
+    private val initializer: ((ResourceReference, Int) -> Unit) -> Unit,
 ) : LayoutlibCallback() {
 
     private val nextId = AtomicInteger(FIRST_ID)
     private val byRef = mutableMapOf<ResourceReference, Int>()
     private val byId = mutableMapOf<Int, ResourceReference>()
+
+    init {
+        try
+        {
+            initializer { ref, id ->
+                byRef[ref] = id
+                byId[id] = ref
+                advanceNextIdAbove(id)
+            }
+        }
+        catch (t: Throwable)
+        {
+            throw IllegalStateException("R.jar 시드 중 실패: ${t.message}", t)
+        }
+    }
+
+    private fun advanceNextIdAbove(seeded: Int)
+    {
+        while (true)
+        {
+            val current = nextId.get()
+            if (current > seeded)
+            {
+                return
+            }
+            if (nextId.compareAndSet(current, seeded + 1))
+            {
+                return
+            }
+        }
+    }
 
     @Synchronized
     override fun getOrGenerateResourceId(ref: ResourceReference): Int {
@@ -91,8 +123,11 @@ class MinimalLayoutlibCallback(
     }
 
     companion object {
-        /** 생성 id 기저. 0x7F 패밀리 (android studio 관례) 의 하위. */
-        private const val FIRST_ID = 0x7F0A_0000
+        /**
+         * 생성 id 기저. 0x7F 패밀리 (android studio 관례) 의 하위.
+         * round 2 Q2 정정 — AAPT type-byte 와 disjoint. 0x7F0A_0000 → 0x7F80_0000.
+         */
+        private const val FIRST_ID = 0x7F80_0000
 
         /** Bridge.mProjectKey lookup 등 내부 진단에 쓰일 수 있는 안정적 app id. */
         private const val APPLICATION_ID = "axp.render"

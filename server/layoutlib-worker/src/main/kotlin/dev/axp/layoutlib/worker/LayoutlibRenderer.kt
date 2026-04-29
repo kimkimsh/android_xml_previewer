@@ -1,8 +1,11 @@
 package dev.axp.layoutlib.worker
 
 import com.android.ide.common.rendering.api.RenderSession
+import com.android.ide.common.rendering.api.ResourceReference
 import com.android.ide.common.rendering.api.Result
 import com.android.ide.common.rendering.api.SessionParams
+import dev.axp.layoutlib.worker.classloader.ClassLoaderConstants
+import dev.axp.layoutlib.worker.classloader.RJarSymbolSeeder
 import dev.axp.layoutlib.worker.classloader.SampleAppClassLoader
 import dev.axp.layoutlib.worker.resources.FrameworkRenderResources
 import dev.axp.layoutlib.worker.resources.FrameworkResourceValueLoader
@@ -171,7 +174,7 @@ class LayoutlibRenderer(
         val resources = FrameworkRenderResources(bundle, SessionConstants.DEFAULT_FRAMEWORK_THEME)
         val params: SessionParams = SessionParamsFactory.build(
             layoutParser = parser,
-            callback = MinimalLayoutlibCallback { ensureSampleAppClassLoader() },
+            callback = MinimalLayoutlibCallback({ ensureSampleAppClassLoader() }, ::seedRJarSymbols),
             resources = resources,
         )
 
@@ -244,6 +247,16 @@ class LayoutlibRenderer(
         val built = SampleAppClassLoader.build(sampleAppModuleRoot, isolated)
         sampleAppClassLoader = built
         return built.classLoader
+    }
+
+    /**
+     * α: callback init 에서 호출. R.jar 의 모든 R$<type> 클래스를 enumerate 하여 등록.
+     */
+    private fun seedRJarSymbols(register: (ResourceReference, Int) -> Unit)
+    {
+        val sampleAppCL = ensureSampleAppClassLoader()
+        val rJarPath = sampleAppModuleRoot.resolve(ClassLoaderConstants.R_JAR_RELATIVE_PATH)
+        RJarSymbolSeeder.seed(rJarPath, sampleAppCL, register)
     }
 
     private class NoopLogHandler : InvocationHandler {
