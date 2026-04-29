@@ -168,7 +168,7 @@ class LayoutlibRenderer(
         val resources = FrameworkRenderResources(bundle, SessionConstants.DEFAULT_FRAMEWORK_THEME)
         val params: SessionParams = SessionParamsFactory.build(
             layoutParser = parser,
-            callback = MinimalLayoutlibCallback(),
+            callback = MinimalLayoutlibCallback { classLoader ?: ClassLoader.getSystemClassLoader() },
             resources = resources,
         )
 

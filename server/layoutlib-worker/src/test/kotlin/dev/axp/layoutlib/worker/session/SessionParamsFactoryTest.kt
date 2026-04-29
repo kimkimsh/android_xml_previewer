@@ -39,7 +39,7 @@ class SessionParamsFactoryTest {
     private fun buildParams(): SessionParams =
         SessionParamsFactory.build(
             layoutParser = LayoutPullParserAdapter.fromReader(StringReader(sampleXml)),
-            callback = MinimalLayoutlibCallback(),
+            callback = MinimalLayoutlibCallback { ClassLoader.getSystemClassLoader() },
             resources = emptyFrameworkRenderResources(),
         )
 
@@ -62,7 +62,7 @@ class SessionParamsFactoryTest {
         val parser = LayoutPullParserAdapter.fromReader(StringReader(sampleXml))
         val params = SessionParamsFactory.build(
             layoutParser = parser,
-            callback = MinimalLayoutlibCallback(),
+            callback = MinimalLayoutlibCallback { ClassLoader.getSystemClassLoader() },
             resources = emptyFrameworkRenderResources(),
         )
         assertSame(parser, params.layoutDescription)

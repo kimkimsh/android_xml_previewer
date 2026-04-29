@@ -8,6 +8,7 @@ import com.android.ide.common.rendering.api.ResourceReference
 import com.android.ide.common.rendering.api.ResourceValue
 import org.kxml2.io.KXmlParser
 import org.xmlpull.v1.XmlPullParser
+import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -20,8 +21,17 @@ import java.util.concurrent.atomic.AtomicInteger
  *  - getAdapterBinding: ListView/Spinner 데이터 바인딩 없음 → null.
  *  - getActionBarCallback: 기본 ActionBarCallback() — setForceNoDecor 로 어차피 action bar 미표시.
  *  - XmlParserFactory 메서드: 본 W2D7 fixture 에서 호출될 일 없으나 interface 계약상 KXmlParser 반환.
+ *
+ * W3D3-L3-CLASSLOADER (round 2 페어 리뷰 반영) — 변경 사항:
+ *  - 생성자에 viewClassLoaderProvider lazy lambda 추가 (Q4 lazy build).
+ *  - loadView: viewClassLoaderProvider 로부터 lazy 로 CL 받아 reflection-instantiate.
+ *    InvocationTargetException 의 cause 를 unwrap (Q3, Codex 입장).
+ *  - findClass: BridgeInflater.findCustomInflater 의 AppCompat 자동 치환 활성화 (F1).
+ *  - hasAndroidXAppCompat: true (F1) — sample-app 의존 그래프 보유.
  */
-class MinimalLayoutlibCallback : LayoutlibCallback() {
+class MinimalLayoutlibCallback(
+    private val viewClassLoaderProvider: () -> ClassLoader,
+) : LayoutlibCallback() {
 
     private val nextId = AtomicInteger(FIRST_ID)
     private val byRef = mutableMapOf<ResourceReference, Int>()
@@ -40,10 +50,27 @@ class MinimalLayoutlibCallback : LayoutlibCallback() {
     override fun resolveResourceId(id: Int): ResourceReference? = byId[id]
 
     override fun loadView(name: String, constructorSignature: Array<out Class<*>>?, constructorArgs: Array<out Any>?): Any {
-        throw UnsupportedOperationException(
-            "W2D7 minimal: custom view '$name' 은 L3 (W3+) 타겟. activity_minimal.xml 은 framework 위젯만 허용."
-        )
+        val cls = viewClassLoaderProvider().loadClass(name)
+        val sig = constructorSignature ?: emptyArray()
+        val args = constructorArgs ?: emptyArray()
+        val ctor = cls.getDeclaredConstructor(*sig)
+        ctor.isAccessible = true
+        try
+        {
+            return ctor.newInstance(*args)
+        }
+        catch (ite: InvocationTargetException)
+        {
+            // Q3: cause unwrap — layoutlib 의 BridgeInflater 가 InflateException 으로 wrap 함.
+            throw ite.cause ?: ite
+        }
     }
+
+    override fun findClass(name: String): Class<*> {
+        return viewClassLoaderProvider().loadClass(name)
+    }
+
+    override fun hasAndroidXAppCompat(): Boolean = true
 
     override fun getParser(layoutResource: ResourceValue?): ILayoutPullParser? = null
 
