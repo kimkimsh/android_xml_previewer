@@ -74,4 +74,23 @@ class FixtureDiscoveryTest {
 
         assertEquals(target, found)
     }
+
+    @Test
+    fun `locateModuleRoot — override 디렉토리 그대로 반환`(@TempDir root: Path) {
+        val moduleDir = Files.createDirectory(root.resolve("custom-sample-app"))
+        val result = FixtureDiscovery.locateModuleRoot(moduleDir)
+        assertEquals(moduleDir, result)
+    }
+
+    @Test
+    fun `locateModuleRoot — candidate root 에서 fixture sample-app 디렉토리 발견`(@TempDir root: Path) {
+        val moduleDir = root.resolve("fixture").resolve("sample-app")
+        Files.createDirectories(moduleDir)
+        val result = FixtureDiscovery.locateInternalModuleRoot(
+            override = null,
+            userDir = root.toString(),
+            candidateRoots = FixtureDiscovery.CANDIDATE_ROOTS,
+        )
+        assertEquals(moduleDir, result)
+    }
 }
