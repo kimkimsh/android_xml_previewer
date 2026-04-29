@@ -1,0 +1,88 @@
+# android-xml-previewer — Gradle version catalog (pinned toolchain)
+#
+# 근거: 08 §5 item 4 (canonical Week 1 Day 1 checklist)
+# 정책: 모든 pin은 빌드 reproducibility를 위해 엄격 고정.
+#       업그레이드는 별도 PR로 cache-key 영향 분석 동반 (06 §3).
+
+[versions]
+# JVM / 언어
+jvm               = "17"               # OpenJDK 17.0.11 이상 (08 §5)
+kotlin            = "1.9.23"            # Kotlin 1.9.x — 2.0은 K2 컴파일러 이슈로 v1에서 회피
+gradle            = "8.7"               # Gradle 8.x
+
+# Kotlin stdlib / coroutines / serialization
+kotlinx-coroutines = "1.8.0"
+kotlinx-serialization = "1.6.3"
+
+# HTTP 서버 + SSE
+ktor              = "2.3.11"
+
+# 로깅
+slf4j             = "2.0.13"
+logback           = "1.5.6"
+
+# 테스트
+junit-jupiter     = "5.10.2"
+mockk             = "1.13.10"
+kotest            = "5.8.1"
+kotlinx-coroutines-test = "1.8.0"
+
+# Android / 빌드 도구 (번들 또는 호출)
+android-sdk-buildtools = "34.0.0"       # aapt2 버전
+android-compile-sdk    = "34"
+android-min-sdk        = "21"           # harness APK min (06 §2.3)
+android-target-sdk     = "34"
+layoutlib-bundle-tag   = "android-34-paparazzi-2026Q1"  # 08 §3.3 Paparazzi prebuilt
+
+# DEX 분석 (Week 3 §3.4 DexPreflight)
+dexlib2           = "3.0.3"
+
+# 이미지 처리 (PNG 인코딩)
+twelvemonkeys-imageio = "3.10.1"
+
+[libraries]
+# Kotlin
+kotlin-stdlib          = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+kotlin-reflect         = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-jdk8 = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-jdk8", version.ref = "kotlinx-coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+
+# Ktor (server)
+ktor-server-core       = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-netty      = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
+# ktor-server-sse 는 Ktor 3.0+ 에서만 제공. v1 에서는 2.3.x 유지하고 SSE 는
+# respondBytesWriter 기반 커스텀 구현 (Week 2 D10) — 07 section 4.3 broadcaster 자체 구현.
+ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages", version.ref = "ktor" }
+ktor-server-cors       = { module = "io.ktor:ktor-server-cors", version.ref = "ktor" }
+ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-server-test-host  = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
+
+# 로깅
+slf4j-api              = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+logback-classic        = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+# 테스트
+junit-jupiter          = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
+junit-jupiter-params   = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit-jupiter" }
+mockk                  = { module = "io.mockk:mockk", version.ref = "mockk" }
+kotest-assertions      = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines-test" }
+
+# DEX
+dexlib2                = { module = "com.android.tools.smali:smali-dexlib2", version.ref = "dexlib2" }
+
+# 이미지
+twelvemonkeys-imageio-core = { module = "com.twelvemonkeys.imageio:imageio-core", version.ref = "twelvemonkeys-imageio" }
+
+[plugins]
+kotlin-jvm             = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization   = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+
+[bundles]
+ktor-server   = ["ktor-server-core", "ktor-server-netty",
+                 "ktor-server-status-pages", "ktor-server-cors",
+                 "ktor-server-content-negotiation", "ktor-serialization-kotlinx-json"]
+test-core     = ["junit-jupiter", "junit-jupiter-params", "mockk",
+                 "kotest-assertions", "kotlinx-coroutines-test"]

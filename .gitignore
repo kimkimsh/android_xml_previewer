@@ -1,0 +1,51 @@
+# =============== android-xml-previewer — .gitignore ===============
+# Week 1 Day 1 — 08 §5 item 5 scaffold 대응.
+
+# --- Gradle ---
+server/.gradle/
+server/build/
+server/**/build/
+server/buildSrc/.gradle/
+server/buildSrc/build/
+# Gradle wrapper JAR 은 repo 에 포함되는 것이 canonical (bootstrap)
+!server/gradle/wrapper/gradle-wrapper.jar
+
+# --- IntelliJ / Android Studio ---
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# --- VS Code ---
+.vscode/
+*.code-workspace
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- 플러그인 런타임 캐시 (01 §7) ---
+.axp-cache/
+
+# --- Android fixture (Week 1 Day 1 item 6) ---
+fixture/*/build/
+fixture/*/.gradle/
+fixture/**/build/
+fixture/**/.gradle/
+fixture/**/local.properties
+
+# --- 번들 바이너리 (플레이스홀더 — 실제 배포는 별도 채널) ---
+server/libs/layoutlib-dist/**/*.jar
+server/libs/layoutlib-dist/**/*.so
+server/libs/fonts/*.ttf
+server/libs/fonts/*.ttc
+server/libs/fonts/*.otf
+server/libs/harness.apk
+server/libs/fixture-app-debug.apk
+
+# --- .remember 스크래치패드 (사적 메모리 — 전체 무시) ---
+.remember/
+
+# --- layoutlib-dist 번들 바이너리 디렉토리 전체 (실제 배포는 별도 채널) ---
+server/libs/layoutlib-dist/

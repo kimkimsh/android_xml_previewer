@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- W1D1 fixture 는 Material 3 DayNight 사용. L1 의 merged-resources 경로(07 §2.1)가
+         androidx.appcompat + material 의 transitive AAR 리소스를 정확히 참조하는지 확인용. -->
+    <style name="Theme.AxpFixture" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">#6750A4</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#EADDFF</item>
+        <item name="colorOnSurface">#1C1B1F</item>
+        <item name="colorOnSurfaceVariant">#49454F</item>
+    </style>
+</resources>

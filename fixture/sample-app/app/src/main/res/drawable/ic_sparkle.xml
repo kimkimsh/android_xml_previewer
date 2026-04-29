@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 단순 VectorDrawable — L1 렌더 성공률 측정(07 §2.8)을 위한 기본 경로. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorOnPrimary">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,2L14.09,8.26L20.5,9L15.5,13.26L16.82,19.02L12,15.77L7.18,19.02L8.5,13.26L3.5,9L9.91,8.26L12,2Z"/>
+</vector>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AXP Fixture</string>
+    <string name="fixture_basic_title">Android XML Previewer</string>
+    <string name="fixture_basic_body">Fixture layout for plugin self-test. Renders through L1 layoutlib.</string>
+    <string name="fixture_basic_button">Render me</string>
+    <string name="fixture_custom_caption">Custom view via DexClassLoader (L3 escalation target)</string>
+</resources>

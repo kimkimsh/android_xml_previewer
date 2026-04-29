@@ -1,0 +1,33 @@
+{
+  "name": "android-xml-previewer",
+  "version": "0.1.0",
+  "description": "Render Android XML layouts to a live browser preview directly from Claude Code (L1 layoutlib + L3 emulator harness with classpath-aware DexClassLoader; 85% coverage target in 6 weeks per docs/plan/08).",
+  "author": {
+    "name": "android-xml-previewer contributors",
+    "email": "TBD@example.com"
+  },
+  "homepage": "https://github.com/TBD/android-xml-previewer",
+  "keywords": [
+    "android",
+    "xml",
+    "layout",
+    "preview",
+    "layoutlib",
+    "material-design",
+    "androidx"
+  ],
+  "license": "Apache-2.0",
+  "mcpServers": {
+    "axp-server": {
+      "command": "java",
+      "args": [
+        "-jar",
+        "${CLAUDE_PLUGIN_ROOT}/server/mcp-server/build/libs/axp-server.jar"
+      ],
+      "env": {
+        "AXP_LIBS": "${CLAUDE_PLUGIN_ROOT}/server/libs",
+        "ANDROID_HOME": "${ANDROID_HOME}"
+      }
+    }
+  }
+}

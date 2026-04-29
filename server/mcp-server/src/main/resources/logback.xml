@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- W2D6-STDIO: MCP stdio 모드가 JSON-RPC 프레임만 stdout 으로 내보낼 수 있도록
+     모든 로그를 STDERR 로 라우팅. HTTP 모드에서도 동일하게 stderr 로 흐르게 하여
+     두 모드 사이에 로그 행동 차이 없음 -->
+<configuration>
+    <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.err</target>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDERR"/>
+    </root>
+
+    <logger name="io.netty" level="WARN"/>
+    <logger name="io.ktor" level="INFO"/>
+</configuration>

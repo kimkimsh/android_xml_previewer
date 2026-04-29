@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "axp-server": {
+      "command": "java",
+      "args": [
+        "-jar",
+        "${CLAUDE_PLUGIN_ROOT}/server/mcp-server/build/libs/axp-server.jar"
+      ],
+      "env": {
+        "AXP_LIBS": "${CLAUDE_PLUGIN_ROOT}/server/libs",
+        "ANDROID_HOME": "${ANDROID_HOME}"
+      }
+    }
+  }
+}

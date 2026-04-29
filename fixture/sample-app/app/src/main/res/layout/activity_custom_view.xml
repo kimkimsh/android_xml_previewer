@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  08 §5 item 6 — W3/W4 L3 에스컬레이션 타겟.
+  <com.fixture.DummyView> 는 AndroidX/framework 에 없는 사용자 정의 View.
+  layoutlib(L1) 에서 ClassNotFoundException → L3 에서 DexClassLoader 로 앱 APK 의 DummyView 로드.
+-->
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <com.fixture.DummyView
+        android:id="@+id/dummy"
+        android:layout_width="200dp"
+        android:layout_height="120dp"
+        android:background="?attr/colorPrimaryContainer"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:text="DummyView" />
+
+    <TextView
+        android:id="@+id/caption"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/fixture_custom_caption"
+        android:textAppearance="?attr/textAppearanceBodySmall"
+        android:layout_marginTop="16dp"
+        app:layout_constraintTop_toBottomOf="@id/dummy"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  W2D7-RENDERSESSION (08 §7.7.1 item 3b) canonical render target.
+  프레임워크 위젯만 (Material / AndroidX / ConstraintLayout 미사용) — LayoutlibCallback.loadView
+  가 android.widget.* 기본 경로만 타도록 최소화. activity_basic.xml 은 L3 (W3+) 타겟.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFFFF"
+    android:padding="32dp">
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Hello layoutlib"
+        android:textColor="#FF000000"
+        android:textSize="28sp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="16dp"
+        android:background="#FF888888" />
+</LinearLayout>
