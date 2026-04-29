@@ -115,6 +115,7 @@ private fun invokeRenderLayoutTool(renderer: PngRenderer, args: Any?): kotlinx.s
 private fun chooseRenderer(parsed: CliArgs): PngRenderer {
     val distOverride: Path? = parsed.valueOf(CliConstants.DIST_DIR_FLAG)?.let { Paths.get(it) }
     val fixtureOverride: Path? = parsed.valueOf(CliConstants.FIXTURE_ROOT_FLAG)?.let { Paths.get(it) }
+    val sampleAppOverride: Path? = parsed.valueOf(CliConstants.SAMPLE_APP_ROOT_FLAG)?.let { Paths.get(it) }
 
     val dist = DistDiscovery.locate(distOverride)
     val fixture = FixtureDiscovery.locate(fixtureOverride)
@@ -126,11 +127,14 @@ private fun chooseRenderer(parsed: CliArgs): PngRenderer {
         )
         return PlaceholderPngRenderer()
     }
+    val sampleAppModuleRoot: Path = FixtureDiscovery.locateModuleRoot(sampleAppOverride)
+        ?: error("sample-app module root 탐지 실패 — --sample-app-root 명시 또는 fixture/sample-app 확인")
     return try {
         LayoutlibRenderer(
             distDir = dist.toAbsolutePath().normalize(),
             fallback = PlaceholderPngRenderer(),
             fixtureRoot = fixture.toAbsolutePath().normalize(),
+            sampleAppModuleRoot = sampleAppModuleRoot.toAbsolutePath().normalize(),
         )
     } catch (e: Throwable) {
         System.err.println(

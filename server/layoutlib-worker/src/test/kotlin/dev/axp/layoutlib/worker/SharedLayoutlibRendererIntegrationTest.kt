@@ -25,8 +25,9 @@ class SharedLayoutlibRendererIntegrationTest {
     fun `첫 getOrCreate 시 LayoutlibRenderer 반환`() {
         val dist = locateDistDir()
         val fixture = locateFixtureRoot()
+        val moduleRoot = locateSampleAppModuleRoot()
 
-        val r = SharedLayoutlibRenderer.getOrCreate(dist, fixture, fallback = null)
+        val r = SharedLayoutlibRenderer.getOrCreate(dist, fixture, moduleRoot, fallback = null)
 
         assertNotNull(r)
     }
@@ -35,9 +36,10 @@ class SharedLayoutlibRendererIntegrationTest {
     fun `같은 args 로 재호출 시 동일 인스턴스 반환`() {
         val dist = locateDistDir()
         val fixture = locateFixtureRoot()
-        val r1 = SharedLayoutlibRenderer.getOrCreate(dist, fixture, fallback = null)
+        val moduleRoot = locateSampleAppModuleRoot()
+        val r1 = SharedLayoutlibRenderer.getOrCreate(dist, fixture, moduleRoot, fallback = null)
 
-        val r2 = SharedLayoutlibRenderer.getOrCreate(dist, fixture, fallback = null)
+        val r2 = SharedLayoutlibRenderer.getOrCreate(dist, fixture, moduleRoot, fallback = null)
 
         assertSame(r1, r2, "같은 args 는 동일 인스턴스여야 함 (referential equality)")
     }
@@ -46,13 +48,14 @@ class SharedLayoutlibRendererIntegrationTest {
     fun `다른 args 로 호출 시 IllegalStateException`() {
         val dist = locateDistDir()
         val fixture = locateFixtureRoot()
+        val moduleRoot = locateSampleAppModuleRoot()
         // bound 상태 확보 — 첫 getOrCreate.
-        SharedLayoutlibRenderer.getOrCreate(dist, fixture, fallback = null)
+        SharedLayoutlibRenderer.getOrCreate(dist, fixture, moduleRoot, fallback = null)
 
         val differentFixture = fixture.resolveSibling("different")
 
         val ex = assertThrows<IllegalStateException> {
-            SharedLayoutlibRenderer.getOrCreate(dist, differentFixture, fallback = null)
+            SharedLayoutlibRenderer.getOrCreate(dist, differentFixture, moduleRoot, fallback = null)
         }
         assertTrue(
             ex.message!!.contains("불일치"),
@@ -69,6 +72,12 @@ class SharedLayoutlibRendererIntegrationTest {
     private fun locateFixtureRoot(): Path {
         val found = FixtureDiscovery.locate(null)
         assumeTrue(found != null, "fixture 없음 — fixture/sample-app 확인")
+        return found!!.toAbsolutePath().normalize()
+    }
+
+    private fun locateSampleAppModuleRoot(): Path {
+        val found = FixtureDiscovery.locateModuleRoot(null)
+        assumeTrue(found != null, "sample-app module root 없음 — fixture/sample-app 확인")
         return found!!.toAbsolutePath().normalize()
     }
 }

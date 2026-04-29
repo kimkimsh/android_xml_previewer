@@ -72,4 +72,10 @@ class CliArgsTest {
         assertTrue(parsed.hasFlag("---triple-dash"))
         assertEquals("value", parsed.valueOf("--"))
     }
+
+    @Test
+    fun `--sample-app-root=value 파싱`() {
+        val parsed = CliArgs.parse(arrayOf("--sample-app-root=/abs/sample-app"), valueBearing)
+        assertEquals("/abs/sample-app", parsed.valueOf("--sample-app-root"))
+    }
 }

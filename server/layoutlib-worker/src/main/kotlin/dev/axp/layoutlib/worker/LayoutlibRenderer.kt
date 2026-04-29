@@ -3,6 +3,7 @@ package dev.axp.layoutlib.worker
 import com.android.ide.common.rendering.api.RenderSession
 import com.android.ide.common.rendering.api.Result
 import com.android.ide.common.rendering.api.SessionParams
+import dev.axp.layoutlib.worker.classloader.SampleAppClassLoader
 import dev.axp.layoutlib.worker.resources.FrameworkRenderResources
 import dev.axp.layoutlib.worker.resources.FrameworkResourceValueLoader
 import dev.axp.layoutlib.worker.resources.ResourceLoaderConstants
@@ -45,6 +46,7 @@ class LayoutlibRenderer(
     private val distDir: Path,
     private val fallback: PngRenderer?,
     private val fixtureRoot: Path,
+    private val sampleAppModuleRoot: Path,
 ) : PngRenderer {
 
     private val bootstrap = LayoutlibBootstrap(distDir)
@@ -52,6 +54,7 @@ class LayoutlibRenderer(
     @Volatile private var initialized = false
     @Volatile private var classLoader: ClassLoader? = null
     @Volatile private var bridgeInstance: Any? = null
+    @Volatile private var sampleAppClassLoader: SampleAppClassLoader? = null
 
     /**
      * W2D7 3b-arch 진단 hook — 마지막 `createSession` 호출의 Result. createSession 이 inflate 를
@@ -168,7 +171,7 @@ class LayoutlibRenderer(
         val resources = FrameworkRenderResources(bundle, SessionConstants.DEFAULT_FRAMEWORK_THEME)
         val params: SessionParams = SessionParamsFactory.build(
             layoutParser = parser,
-            callback = MinimalLayoutlibCallback { classLoader ?: ClassLoader.getSystemClassLoader() },
+            callback = MinimalLayoutlibCallback { ensureSampleAppClassLoader() },
             resources = resources,
         )
 
@@ -226,6 +229,21 @@ class LayoutlibRenderer(
                 session.dispose()
             } catch (_: Throwable) {}
         }
+    }
+
+    /**
+     * W3D3 (round-2 페어 B1): sample-app 의 dex/aar 클래스로더는 lazy 하게 build.
+     * Bridge.init 이 끝난 후 (= isolated CL 가 준비된 후) MinimalLayoutlibCallback 의
+     * loadView 가 처음 호출되는 시점에 한 번 빌드된다.
+     */
+    @Synchronized
+    private fun ensureSampleAppClassLoader(): ClassLoader
+    {
+        sampleAppClassLoader?.let { return it.classLoader }
+        val isolated = classLoader ?: error("Bridge 가 init 안 됨 (initBridge 가 먼저 실행되어야 함)")
+        val built = SampleAppClassLoader.build(sampleAppModuleRoot, isolated)
+        sampleAppClassLoader = built
+        return built.classLoader
     }
 
     private class NoopLogHandler : InvocationHandler {

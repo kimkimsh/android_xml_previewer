@@ -28,9 +28,11 @@ class LayoutlibRendererIntegrationTest {
     fun `tier3 — renderPng returns non-empty PNG bytes with PNG magic header`() {
         val dist = locateDistDir()
         val fixture = locateFixtureRoot()
+        val moduleRoot = locateSampleAppModuleRoot()
         val renderer = SharedLayoutlibRenderer.getOrCreate(
             distDir = dist,
             fixtureRoot = fixture,
+            sampleAppModuleRoot = moduleRoot,
             fallback = null,
         )
         val bytes = renderer.renderPng("activity_basic.xml")
@@ -53,6 +55,12 @@ class LayoutlibRendererIntegrationTest {
     private fun locateFixtureRoot(): Path {
         val found = FixtureDiscovery.locate(null)
         assumeTrue(found != null, "fixture 없음 — fixture/sample-app 확인")
+        return found!!.toAbsolutePath().normalize()
+    }
+
+    private fun locateSampleAppModuleRoot(): Path {
+        val found = FixtureDiscovery.locateModuleRoot(null)
+        assumeTrue(found != null, "sample-app module root 없음 — fixture/sample-app 확인")
         return found!!.toAbsolutePath().normalize()
     }
 }

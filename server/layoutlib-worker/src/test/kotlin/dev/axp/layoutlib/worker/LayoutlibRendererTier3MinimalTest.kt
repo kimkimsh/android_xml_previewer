@@ -45,9 +45,12 @@ class LayoutlibRendererTier3MinimalTest {
                 }
             val fixture = FixtureDiscovery.locate(null)
                 ?: error("fixture 없음 — fixture/sample-app 확인")
+            val moduleRoot = FixtureDiscovery.locateModuleRoot(null)
+                ?: error("sample-app module root 없음 — fixture/sample-app 확인")
             return SharedLayoutlibRenderer.getOrCreate(
                 distDir = dist.toAbsolutePath().normalize(),
                 fixtureRoot = fixture.toAbsolutePath().normalize(),
+                sampleAppModuleRoot = moduleRoot.toAbsolutePath().normalize(),
                 fallback = null,
             )
         }

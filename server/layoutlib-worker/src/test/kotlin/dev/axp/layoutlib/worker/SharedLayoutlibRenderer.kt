@@ -29,19 +29,20 @@ import java.nio.file.Path
 object SharedLayoutlibRenderer
 {
     @Volatile private var instance: LayoutlibRenderer? = null
-    @Volatile private var boundArgs: Pair<Path, Path>? = null
+    @Volatile private var boundArgs: RendererArgs? = null
 
     @Synchronized
     fun getOrCreate(
         distDir: Path,
         fixtureRoot: Path,
+        sampleAppModuleRoot: Path,
         fallback: PngRenderer?,
     ): LayoutlibRenderer
     {
-        val requested = distDir to fixtureRoot
+        val requested = RendererArgs(distDir, fixtureRoot, sampleAppModuleRoot)
         SharedRendererBinding.verify(boundArgs, requested)
         instance?.let { return it }
-        val created = LayoutlibRenderer(distDir, fallback, fixtureRoot)
+        val created = LayoutlibRenderer(distDir, fallback, fixtureRoot, sampleAppModuleRoot)
         instance = created
         boundArgs = requested
         return created

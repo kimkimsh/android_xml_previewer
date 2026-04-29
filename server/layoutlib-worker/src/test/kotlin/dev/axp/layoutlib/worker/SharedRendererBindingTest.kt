@@ -12,17 +12,22 @@ class SharedRendererBindingTest {
     private val distB = Paths.get("/dist/b")
     private val fixA = Paths.get("/fix/a")
     private val fixB = Paths.get("/fix/b")
+    private val moduleA = Paths.get("/module/a")
+    private val moduleB = Paths.get("/module/b")
 
     @Test
     fun `bound 가 null 이면 항상 통과 (첫 바인드)`() {
         assertDoesNotThrow {
-            SharedRendererBinding.verify(bound = null, requested = distA to fixA)
+            SharedRendererBinding.verify(
+                bound = null,
+                requested = RendererArgs(distA, fixA, moduleA),
+            )
         }
     }
 
     @Test
     fun `bound 와 requested 가 동일하면 통과`() {
-        val same = distA to fixA
+        val same = RendererArgs(distA, fixA, moduleA)
 
         assertDoesNotThrow {
             SharedRendererBinding.verify(bound = same, requested = same)
@@ -31,8 +36,8 @@ class SharedRendererBindingTest {
 
     @Test
     fun `bound 와 requested 가 다르면 IllegalStateException`() {
-        val bound = distA to fixA
-        val requested = distB to fixB
+        val bound = RendererArgs(distA, fixA, moduleA)
+        val requested = RendererArgs(distB, fixB, moduleB)
 
         val ex = assertThrows<IllegalStateException> {
             SharedRendererBinding.verify(bound = bound, requested = requested)
