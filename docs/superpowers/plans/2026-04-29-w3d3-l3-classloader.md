@@ -13,7 +13,20 @@
 
 **Spec**: [`docs/superpowers/specs/2026-04-29-w3d3-l3-classloader-design.md`](../specs/2026-04-29-w3d3-l3-classloader-design.md). 본 플랜 모든 결정은 spec 의 round 2 본문 + §9 contingency 에 일치.
 
-**Round 1 페어-리뷰**: spec 단계에서 완료 (`docs/work_log/2026-04-29_w3d3-l3-classloader/spec-pair-review-round1-{codex,claude}.md`). 본 플랜에 별도 round 2 페어-리뷰 진행 후 구현 phase 진입.
+**Round 1 페어-리뷰** (spec): `docs/work_log/2026-04-29_w3d3-l3-classloader/spec-pair-review-round1-{codex,claude}.md`. **Round 2 페어-리뷰** (plan v1): `plan-pair-review-round2-{codex,claude}.md`. 본 v2 는 round 2 의 모든 컨버전트 fix 를 반영:
+
+- **B1** (양측 수렴): Task 7+8 merge → 단일 atomic Task 7 (constructor + 모든 caller + 1 commit).
+- **B2** (Codex valid): Task 6 `findClass` 테스트의 `StringBuilder.classLoader == parent` 가정 잘못 (StringBuilder bootstrap-loaded → null). 사용자 정의 추적용 ClassLoader 로 교체.
+- **B3** (Codex valid): Task 4 의 "R.jar 누락" 테스트가 사실은 empty manifest 를 트리거 — 정정해 valid manifest + R.jar 만 누락하도록.
+- **B4** (Codex valid): `RendererArgs` data class 도입해 SharedRendererBinding 의 Pair<Path,Path> 를 3-path 로 확장.
+- **B5** (Claude empirical): AGP 8.x `tasks.named("assembleDebug")` 가 top-level 에서 `UnknownTaskException` — `afterEvaluate` 필수 (round 1 Q1 convergence 정정).
+- **B6** (Codex valid): Task 6 가 `MinimalLayoutlibCallback()` 의 모든 caller (특히 `SessionParamsFactoryTest`) 를 enumerate.
+- **B7** (양측 수렴): Task 10 branch (C) 를 hard-stop + evidence capture 로 명시.
+- **B8** (Codex valid): Task 3 에 corrupted AAR (IOException) 테스트 추가.
+- **B9** (Codex valid): Task 6 의 `MinimalLayoutlibCallback` 신규 KDoc 가 기존 W2D7 KDoc 을 보존하도록 명시.
+- **B10** (Codex valid): Task 8 의 CLI 변경에 `--sample-app-root` 단위 테스트 + USAGE_LINE 갱신 추가.
+- **B11** (양측 수렴): T1 gate 의 `assumeTrue(found != null, ...)` → `requireNotNull(...)` 로 — fixture 누락은 정직한 실패가 옳음.
+- **테스트 카운트**: 신규 unit = 3+5+5+3+2+5 = **23** (Codex 발견 +1, T6 와 T3 추가 케이스 포함). 118 → **141 unit**. 기존 integration 11+1 SKIP → **12 PASS + 1 SKIP** (tier3-glyph 만 SKIP).
 
 ---
 
@@ -321,6 +334,15 @@ class AarExtractorTest {
         val missing = root.resolve("missing.aar")
         assertThrows<IllegalArgumentException> { AarExtractor.extract(missing, cacheRoot) }
     }
+
+    @Test
+    fun `손상된 ZIP — IOException`(@TempDir root: Path) {
+        val cacheRoot = root.resolve("cache")
+        val corrupted = root.resolve("broken${ClassLoaderConstants.AAR_EXTENSION}")
+        // valid ZIP magic 으로 시작하지만 EOCD 가 없는 truncated 파일
+        Files.write(corrupted, byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0, 0, 0, 0))
+        assertThrows<java.util.zip.ZipException> { AarExtractor.extract(corrupted, cacheRoot) }
+    }
 }
 ```
 
@@ -464,15 +486,19 @@ class SampleAppClassLoaderTest {
     }
 
     @Test
-    fun `R_jar 누락 — 명확한 메시지로 require fail`(@TempDir root: Path) {
+    fun `R_jar 누락 — IllegalArgumentException 메시지에 R_jar 포함`(@TempDir root: Path) {
+        // valid manifest 작성 (jar 1 개) — manifest 빈-체크를 통과하도록.
         val mfDir = root.resolve(ClassLoaderConstants.MANIFEST_RELATIVE_PATH).parent
         Files.createDirectories(mfDir)
-        Files.writeString(root.resolve(ClassLoaderConstants.MANIFEST_RELATIVE_PATH), "")
-        // intentionally do NOT create R.jar
+        val realJar = makeTinyJar(root, "stub")
+        Files.writeString(
+            root.resolve(ClassLoaderConstants.MANIFEST_RELATIVE_PATH),
+            realJar.toAbsolutePath().toString(),
+        )
+        // R.jar 디렉토리는 만들지 않음 (require Files.isRegularFile 이 fire) — IllegalArgumentException.
         val parent = ClassLoader.getSystemClassLoader()
-        val ex = assertThrows<IllegalStateException> { SampleAppClassLoader.build(root, parent) }
-        // 빈 manifest 가 먼저 발화되거나 R.jar 누락이 발화 — 둘 다 IllegalStateException 또는
-        // IllegalArgumentException. ex 가 둘 중 하나면 된다.
+        val ex = assertThrows<IllegalArgumentException> { SampleAppClassLoader.build(root, parent) }
+        kotlin.test.assertTrue(ex.message!!.contains("R.jar"), "메시지에 R.jar 포함 필요: ${ex.message}")
     }
 
     @Test
@@ -569,7 +595,7 @@ fun `locateModuleRoot — candidate root 에서 fixture sample-app 디렉토리 
 }
 ```
 
-- [ ] **Step 2: FixtureDiscovery 수정 — `locateModuleRoot` + `locateInternalModuleRoot` + `FIXTURE_MODULE_SUBPATH` 상수 추가**
+- [ ] **Step 2: FixtureDiscovery 수정 — `locateModuleRoot` + `locateInternalModuleRoot` + `FIXTURE_MODULE_SUBPATH` 상수 추가** (B6 round 2 페어 컨버전스: 기존 `locateInternal` (3-arg) 을 같이 보존하는 명시적 bridge 정의 — 기존 `FixtureDiscoveryTest` 5 tests 가 그대로 PASS):
 
 ```kotlin
 const val FIXTURE_MODULE_SUBPATH = "fixture/sample-app"
@@ -586,6 +612,16 @@ internal fun locateInternalModuleRoot(
     candidateRoots: List<String>,
 ): Path? = locateInternalGeneric(override, userDir, candidateRoots, FIXTURE_MODULE_SUBPATH)
 
+/**
+ * 기존 3-arg locateInternal 을 보존 — FixtureDiscoveryTest 5 tests 의 호출부 유지.
+ * subpath = FIXTURE_SUBPATH (= "fixture/sample-app/app/src/main/res/layout").
+ */
+internal fun locateInternal(
+    override: Path?,
+    userDir: String,
+    candidateRoots: List<String>,
+): Path? = locateInternalGeneric(override, userDir, candidateRoots, FIXTURE_SUBPATH)
+
 internal fun locateInternalGeneric(
     override: Path?,
     userDir: String,
@@ -593,20 +629,27 @@ internal fun locateInternalGeneric(
     subpath: String,
 ): Path? {
     if (override != null) {
-        require(Files.isDirectory(override)) {
+        require(Files.isDirectory(override))
+        {
             "fixture root 경로가 디렉토리가 아님 또는 존재하지 않음: $override"
         }
         return override
     }
     val candidates: List<Path> = candidateRoots.flatMap { root ->
-        if (root.isEmpty()) listOf(Paths.get(subpath), Paths.get(userDir, subpath))
-        else listOf(Paths.get(root, subpath), Paths.get(userDir, root, subpath))
+        if (root.isEmpty())
+        {
+            listOf(Paths.get(subpath), Paths.get(userDir, subpath))
+        }
+        else
+        {
+            listOf(Paths.get(root, subpath), Paths.get(userDir, root, subpath))
+        }
     }
     return candidates.firstOrNull { Files.isDirectory(it) }
 }
 ```
 
-기존 `locateInternal` 은 `locateInternalGeneric(... , FIXTURE_SUBPATH)` 로 위임 (동작 동일).
+(CLAUDE.md "Brace Style — 단일 라인도 `{}` + opening brace own newline" 준수 — Codex round 2 valid 발견.)
 
 - [ ] **Step 3: 전체 테스트 실행 — 기존 5 + 신규 2 모두 PASS**
 
@@ -624,58 +667,96 @@ Expected: 7 PASS.
 - Modify (small): `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/session/MinimalLayoutlibCallbackTest.kt` — 기존 테스트 새 시그니처에 맞게 업데이트.
 - Create: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/session/MinimalLayoutlibCallbackLoadViewTest.kt` (3 tests)
 
-- [ ] **Step 1: 신규 테스트 3개 작성**
+- [ ] **Step 1: 신규 테스트 5개 작성** (B2 fix: StringBuilder.classLoader is null bootstrap → tracking ClassLoader 로 교체. Codex valid: ITE unwrap + ctor mismatch 케이스 추가).
 
 ```kotlin
 package dev.axp.layoutlib.worker.session
 
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.lang.reflect.InvocationTargetException
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class MinimalLayoutlibCallbackLoadViewTest {
 
-    private fun newCallback(provider: () -> ClassLoader): MinimalLayoutlibCallback =
-        MinimalLayoutlibCallback(provider)
+    /**
+     * 호출 추적용 ClassLoader — 어떤 클래스가 어느 provider 로부터 요청됐는지 검증.
+     * StringBuilder 같은 bootstrap 클래스를 직접 쓰면 cls.classLoader == null 이라 비교가 깨짐.
+     */
+    private class TrackingClassLoader(parent: ClassLoader) : ClassLoader(parent) {
+        val requested = mutableListOf<String>()
+        override fun loadClass(name: String): Class<*> {
+            requested += name
+            return super.loadClass(name)
+        }
+    }
+
+    private fun newCallback(cl: ClassLoader): MinimalLayoutlibCallback =
+        MinimalLayoutlibCallback { cl }
 
     @Test
-    fun `loadView — 기본 String 클래스 로드 성공 (자기 CL 활용)`() {
-        val cb = newCallback { ClassLoader.getSystemClassLoader() }
-        // String 의 (CharSequence) 생성자
+    fun `loadView — provider CL 로 위임 + 정상 instantiate`() {
+        val cl = TrackingClassLoader(ClassLoader.getSystemClassLoader())
+        val cb = newCallback(cl)
         val v = cb.loadView("java.lang.StringBuilder", arrayOf(CharSequence::class.java), arrayOf<Any>("hi"))
         assertNotNull(v)
+        assertEquals("hi", v.toString())
+        assertTrue("java.lang.StringBuilder" in cl.requested, "provider CL 호출 기록: ${cl.requested}")
     }
 
     @Test
-    fun `loadView — 미지 클래스 ClassNotFoundException`() {
-        val cb = newCallback { ClassLoader.getSystemClassLoader() }
+    fun `loadView — 미지 클래스 ClassNotFoundException pass-through`() {
+        val cl = TrackingClassLoader(ClassLoader.getSystemClassLoader())
+        val cb = newCallback(cl)
         assertThrows<ClassNotFoundException> {
             cb.loadView("does.not.Exist", arrayOf(), arrayOf())
         }
     }
 
     @Test
-    fun `findClass — provider CL 위임`() {
-        val parent = ClassLoader.getSystemClassLoader()
-        val cb = newCallback { parent }
+    fun `loadView — InvocationTargetException 의 cause 가 unwrap 되어 throw`() {
+        // 생성자에서 throw 하는 클래스를 일부러 호출 (ArrayList(int) 가 negative 면 IllegalArgumentException).
+        val cl = TrackingClassLoader(ClassLoader.getSystemClassLoader())
+        val cb = newCallback(cl)
+        val ex = assertThrows<IllegalArgumentException> {
+            cb.loadView("java.util.ArrayList", arrayOf(Int::class.javaPrimitiveType!!), arrayOf<Any>(-1))
+        }
+        // unwrap 됐으므로 InvocationTargetException 가 아닌 IllegalArgumentException 이 잡힘.
+        assertTrue(ex !is InvocationTargetException)
+    }
+
+    @Test
+    fun `findClass — provider CL 로 위임`() {
+        val cl = TrackingClassLoader(ClassLoader.getSystemClassLoader())
+        val cb = newCallback(cl)
         val cls = cb.findClass("java.lang.StringBuilder")
-        assertSame(parent, cls.classLoader)
+        assertEquals(java.lang.StringBuilder::class.java, cls)
+        assertTrue("java.lang.StringBuilder" in cl.requested)
     }
 
     @Test
     fun `hasAndroidXAppCompat — true`() {
-        val cb = newCallback { ClassLoader.getSystemClassLoader() }
-        kotlin.test.assertTrue(cb.hasAndroidXAppCompat())
+        val cb = newCallback(ClassLoader.getSystemClassLoader())
+        assertTrue(cb.hasAndroidXAppCompat())
     }
 }
 ```
 
-- [ ] **Step 2: 기존 MinimalLayoutlibCallbackTest.kt — `MinimalLayoutlibCallback()` no-arg 호출 부분을 `MinimalLayoutlibCallback { ClassLoader.getSystemClassLoader() }` 로 업데이트**
+- [ ] **Step 2: 기존 `MinimalLayoutlibCallback()` no-arg 모든 caller 업데이트** (Codex B6/A2):
 
-(파일 안의 모든 호출부에 lambda 인자 명시 — sed/grep 으로 일괄 변환 가능)
+```bash
+grep -rn "MinimalLayoutlibCallback()" server/ --include="*.kt"
+# expected sites:
+#   server/layoutlib-worker/src/test/kotlin/.../MinimalLayoutlibCallbackTest.kt (8 sites)
+#   server/layoutlib-worker/src/test/kotlin/.../session/SessionParamsFactoryTest.kt (lines 42, 65)
+#   server/layoutlib-worker/src/main/kotlin/.../LayoutlibRenderer.kt (renderViaLayoutlib 안)
+```
 
-- [ ] **Step 3: MinimalLayoutlibCallback 수정**
+각 호출부를 `MinimalLayoutlibCallback { ClassLoader.getSystemClassLoader() }` (테스트) 또는 `MinimalLayoutlibCallback { ensureSampleAppClassLoader() }` (production) 로 변경.
+
+- [ ] **Step 3: MinimalLayoutlibCallback 수정** (CLAUDE.md "Never delete existing comments" — 기존 W2D7 class-level KDoc 보존, **추가 변경 부분에만 새 KDoc 덧붙임**. `loadView` 의 UnsupportedOperationException 분기만 reflection 으로 교체)
 
 ```kotlin
 package dev.axp.layoutlib.worker.session
@@ -775,12 +856,98 @@ Expected: 기존 + 신규 모두 PASS.
 
 ---
 
-## Task 7: `LayoutlibRenderer` — sampleAppModuleRoot 인자 + lazy provider 배선
+## Task 7: LayoutlibRenderer + 모든 caller — atomic 변경 + 1 commit
 
-**Files:**
-- Modify: `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/LayoutlibRenderer.kt`
+(B1 페어-리뷰 컨버전스: round 2 plan-review 가 W3D2 LM-B1 prior art 를 인용하며 Task 7+8 분리는 LM-B1 의 안티패턴이라고 명시. 본 v2 에서 단일 atomic task 로 merge.)
 
-- [ ] **Step 1: 생성자에 `sampleAppModuleRoot: Path` 추가 + `ensureSampleAppClassLoader` private 메서드**
+**Files (모든 변경 한 commit):**
+- Modify: `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/LayoutlibRenderer.kt` (생성자 + lazy provider)
+- Modify: `server/mcp-server/src/main/kotlin/dev/axp/mcp/Main.kt` (`chooseRenderer` 의 새 인자 주입)
+- Modify: `server/mcp-server/src/main/kotlin/dev/axp/mcp/CliArgs.kt` (helper)
+- Modify: `server/mcp-server/src/main/kotlin/dev/axp/mcp/CliConstants.kt` (`SAMPLE_APP_ROOT_FLAG`, `VALUE_BEARING_FLAGS`, `USAGE_LINE`)
+- Modify: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedLayoutlibRenderer.kt`
+- Modify: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedRendererBinding.kt`
+- Modify: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedRendererBindingTest.kt` (3 tests adjusted)
+- Modify: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedLayoutlibRendererIntegrationTest.kt` (4 sites)
+- Modify: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/LayoutlibRendererTier3MinimalTest.kt` (companion sharedRenderer)
+- Create: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/RendererArgs.kt` (B4: data class)
+- Modify: `server/mcp-server/src/test/kotlin/dev/axp/mcp/CliArgsTest.kt` (B10: `--sample-app-root` 단위 테스트 1 추가)
+
+**Step 0: 변경 요약 (atomic compile + atomic commit)**:
+1. RendererArgs data class 새로 만든다 (B4).
+2. SharedRendererBinding 의 Pair<Path,Path> → RendererArgs 로 교체.
+3. SharedRendererBindingTest 3 tests 의 Pair 사용 → RendererArgs 로 교체.
+4. LayoutlibRenderer 생성자에 `sampleAppModuleRoot` 인자 추가.
+5. SharedLayoutlibRenderer.getOrCreate / boundArgs 시그니처 확장.
+6. Main.kt + CliArgs + CliConstants 에 `--sample-app-root` 추가 (USAGE_LINE 갱신 포함).
+7. CliArgsTest 에 신규 test 1 추가.
+8. SharedLayoutlibRendererIntegrationTest / LayoutlibRendererTier3MinimalTest 모든 호출부 갱신.
+9. LayoutlibRenderer.renderViaLayoutlib 의 callback 생성을 lazy provider 로.
+10. **반드시 한 commit** — `./server/gradlew -p server build` 가 최종 PASS 일 때만 commit.
+
+**Step 1: RendererArgs data class 생성**
+
+```kotlin
+// server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/RendererArgs.kt
+package dev.axp.layoutlib.worker
+
+import java.nio.file.Path
+
+/**
+ * SharedLayoutlibRenderer / SharedRendererBinding 의 cache 키 + 인자 묶음.
+ * W3D3-B4 (round 2 페어 리뷰): 기존 Pair<Path,Path> 가 3-path 로 확장 안 되어 도입.
+ */
+internal data class RendererArgs(
+    val distDir: Path,
+    val fixtureRoot: Path,
+    val sampleAppModuleRoot: Path,
+)
+```
+
+**Step 2: SharedRendererBinding 변경** (`Pair<Path,Path>` → `RendererArgs`)
+
+기존 `verify(bound: Pair<Path,Path>?, requested: Pair<Path,Path>): Pair<Path,Path>` 형태였다면, 이제:
+
+```kotlin
+internal fun verify(bound: RendererArgs?, requested: RendererArgs): RendererArgs {
+    if (bound != null) {
+        require(bound == requested) { "SharedLayoutlibRenderer 가 다른 인자로 재바인딩됨: bound=$bound, requested=$requested" }
+        return bound
+    }
+    return requested
+}
+```
+
+**Step 3: SharedRendererBinding 의 3 tests 갱신**
+
+`Pair(d1, f1)` → `RendererArgs(d1, f1, m1)` 로 교체. `differentFixture` mismatch 케이스도 sampleAppModuleRoot 까지 비교하도록 확장.
+
+**Step 4: SharedLayoutlibRenderer 변경**
+
+```kotlin
+class SharedLayoutlibRenderer private constructor(...) {
+    @Volatile private var boundArgs: RendererArgs? = null
+    // ... existing impl ...
+
+    companion object {
+        fun getOrCreate(
+            distDir: Path,
+            fixtureRoot: Path,
+            sampleAppModuleRoot: Path,
+            fallback: PngRenderer?,
+        ): SharedLayoutlibRenderer {
+            val requested = RendererArgs(distDir, fixtureRoot, sampleAppModuleRoot)
+            // existing instance 가 있으면 verify(bound, requested) 후 그대로 반환.
+            // 없으면 LayoutlibRenderer(distDir, fallback, fixtureRoot, sampleAppModuleRoot) 새 인스턴스 wrap.
+            ...
+        }
+    }
+}
+```
+
+**Step 5: SharedLayoutlibRendererIntegrationTest** — 4 호출부 모두 `sampleAppModuleRoot = FixtureDiscovery.locateModuleRoot(null)!!.toAbsolutePath().normalize()` 추가.
+
+**Step 6: LayoutlibRenderer 변경**
 
 ```kotlin
 class LayoutlibRenderer(
@@ -789,7 +956,7 @@ class LayoutlibRenderer(
     private val fixtureRoot: Path,
     private val sampleAppModuleRoot: Path,
 ) : PngRenderer {
-    // ... 기존 필드 그대로 ...
+    // ... 기존 모든 필드/메서드 그대로 — KDoc 보존 ...
 
     @Volatile private var sampleAppClassLoader: SampleAppClassLoader? = null
 
@@ -801,73 +968,104 @@ class LayoutlibRenderer(
         sampleAppClassLoader = built
         return built.classLoader
     }
+    // ... renderViaLayoutlib 내부의 MinimalLayoutlibCallback() 라인을
+    //     MinimalLayoutlibCallback { ensureSampleAppClassLoader() } 로 변경 ...
+}
 ```
 
-- [ ] **Step 2: `renderViaLayoutlib` 안의 `MinimalLayoutlibCallback()` 호출을 `MinimalLayoutlibCallback { ensureSampleAppClassLoader() }` 로 교체**
+**Step 7: CLI**
 
-해당 라인은 `LayoutlibRenderer.kt:170` 부근 (W2D7 시점 기준; 현재 정확한 라인은 grep `MinimalLayoutlibCallback()`).
+`CliConstants.kt`:
+```kotlin
+const val SAMPLE_APP_ROOT_FLAG = "--sample-app-root"
+val VALUE_BEARING_FLAGS: Set<String> = setOf(DIST_DIR_FLAG, FIXTURE_ROOT_FLAG, SAMPLE_APP_ROOT_FLAG)
+const val USAGE_LINE = "axp [--stdio] [--dist-dir=<path>] [--fixture-root=<layout-dir>] [--sample-app-root=<sample-app-module-dir>]"
+```
 
-- [ ] **Step 3: 컴파일만 — 컴파일 FAIL 예상 (호출부 모두 sampleAppModuleRoot 인자 누락)**
+`Main.kt` `chooseRenderer`:
+```kotlin
+val sampleAppOverride: Path? = parsed.valueOf(CliConstants.SAMPLE_APP_ROOT_FLAG)?.let { Paths.get(it) }
+val sampleAppModuleRoot: Path = FixtureDiscovery.locateModuleRoot(sampleAppOverride)
+    ?: error("sample-app module root 탐지 실패 — --sample-app-root 명시 또는 fixture/sample-app 확인")
+// ... LayoutlibRenderer(distDir, fallback, fixtureRoot, sampleAppModuleRoot) ...
+```
 
-Run: `./server/gradlew -p server :layoutlib-worker:compileKotlin :mcp-server:compileKotlin`
-Expected: FAIL — 호출부가 새 인자를 안 줌.
+**Step 8: CliArgsTest 에 신규 test 1 추가**:
+```kotlin
+@Test
+fun `--sample-app-root=value 파싱`() {
+    val parsed = CliArgs.parse(arrayOf("--sample-app-root=/abs/sample-app"), valueBearing)
+    assertEquals("/abs/sample-app", parsed.valueOf("--sample-app-root"))
+}
+```
 
-(여기서 commit 하지 않고 Task 8 까지 묶어서 처리 — 컴파일이 깨진 상태는 task unit 미완으로 간주.)
+**Step 9: LayoutlibRendererTier3MinimalTest companion sharedRenderer** — `getOrCreate(dist, fixture, FixtureDiscovery.locateModuleRoot(null)!!, fallback=null)` 형태로.
 
----
+**Step 10: 전체 build + test**
 
-## Task 8: 모든 호출부 업데이트 — Main.kt CLI + SharedLayoutlibRenderer + 모든 테스트
+Run:
+```bash
+./server/gradlew -p server build
+./server/gradlew -p server test                                                # all unit
+./server/gradlew -p server :layoutlib-worker:test -PincludeTags=integration    # all integration
+```
 
-**Files:**
-- Modify: `server/mcp-server/src/main/kotlin/dev/axp/mcp/Main.kt`
-- Modify: `server/mcp-server/src/main/kotlin/dev/axp/mcp/CliArgs.kt`
-- Modify: `server/mcp-server/src/main/kotlin/dev/axp/mcp/CliConstants.kt`
-- Modify: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedLayoutlibRenderer.kt`
-- Modify: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedRendererBinding.kt`
-- Modify: 모든 production `LayoutlibRenderer(...)` 호출하는 테스트 (W3D1: `LayoutlibRendererTier3MinimalTest`, integration tests).
-- Modify: `LayoutlibRendererIntegrationTest.kt` — 곧 Task 10 에서 enable.
+Expected: BUILD SUCCESSFUL. integration test 카운트 변화 없음 (`LayoutlibRendererIntegrationTest` 아직 `@Disabled`). unit count 는 +1 (`--sample-app-root` 테스트).
 
-- [ ] **Step 1: CliConstants/CliArgs — `--sample-app-root=<path>` 플래그 추가**
-
-CliConstants.VALUE_BEARING_FLAGS 에 `"--sample-app-root"` 추가.
-CliArgs 데이터클래스에 `val sampleAppRoot: String?` 추가, parse 가 채움.
-
-- [ ] **Step 2: Main.kt `chooseRenderer` — `FixtureDiscovery.locateModuleRoot(cliArgs.sampleAppRoot?.let { Path.of(it) })` 결과를 LayoutlibRenderer 에 주입**
-
-기존 `--fixture-root` 처리 옆에 동일 패턴.
-
-- [ ] **Step 3: SharedLayoutlibRenderer.getOrCreate(distDir, fixtureRoot, sampleAppModuleRoot, fallback)**
-
-W3D2 의 시그니처 그대로 확장. binding 은 `LayoutlibRenderer(distDir, fallback, fixtureRoot, sampleAppModuleRoot)` 호출.
-
-- [ ] **Step 4: 모든 production renderer 호출 grep + 업데이트**
+**Step 11: 단일 commit**
 
 ```bash
-grep -rn "LayoutlibRenderer(" server/ --include="*.kt"
-grep -rn "SharedLayoutlibRenderer.getOrCreate" server/ --include="*.kt"
+git add server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/LayoutlibRenderer.kt \
+        server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/RendererArgs.kt \
+        server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedLayoutlibRenderer.kt \
+        server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedRendererBinding.kt \
+        server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedRendererBindingTest.kt \
+        server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedLayoutlibRendererIntegrationTest.kt \
+        server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/LayoutlibRendererTier3MinimalTest.kt \
+        server/mcp-server/src/main/kotlin/dev/axp/mcp/CliConstants.kt \
+        server/mcp-server/src/main/kotlin/dev/axp/mcp/CliArgs.kt \
+        server/mcp-server/src/main/kotlin/dev/axp/mcp/Main.kt \
+        server/mcp-server/src/test/kotlin/dev/axp/mcp/CliArgsTest.kt
+git commit -m "feat(w3d3): LayoutlibRenderer.sampleAppModuleRoot + RendererArgs + CLI ..."
+git push origin main
 ```
-
-각 호출부에서 `sampleAppModuleRoot` 인자 명시. 테스트는 `FixtureDiscovery.locateModuleRoot(null)!!` 패턴 사용.
-
-- [ ] **Step 5: `LayoutlibRendererTier3MinimalTest.kt` — companion sharedRenderer 생성 시 sampleAppModuleRoot 추가**
-
-- [ ] **Step 6: 전체 build + test 실행 — 컴파일 PASS + 기존 테스트 (118 unit + 11 integration) 회귀 없음 확인**
-
-Run: `./server/gradlew -p server build`
-Expected: BUILD SUCCESSFUL. activity_basic.xml 의 `LayoutlibRendererIntegrationTest` 는 아직 `@Disabled` 상태 — 회귀 없음.
-
-- [ ] **Step 7: Commit (Task 7 + Task 8 묶음 — atomic compilation unit)**
 
 ---
 
-## Task 9: Gradle `axpEmitClasspath` task + 첫 manifest 생성
+## Task 8 (was 9): Gradle `axpEmitClasspath` task + 첫 manifest 생성
+
+(이전 Task 7 가 합쳐진 결과 번호가 시프트. 본 v2 의 Task 8 는 round 1 v1 의 Task 9.)
+
+## Task 8 (was 9): Gradle `axpEmitClasspath` task + 첫 manifest 생성
 
 **Files:**
 - Modify: `fixture/sample-app/app/build.gradle.kts`
 
-- [ ] **Step 1: Gradle 신규 task 추가**
+- [ ] **Step 1: Gradle 신규 task 추가** (B5: AGP 8.x `tasks.named("assembleDebug")` 가 top-level 에서 미존재 → `afterEvaluate` 필수. round 1 Q1 convergence 정정.)
 
-`build.gradle.kts` 의 끝에 spec §4.1 의 코드 그대로 추가.
+`build.gradle.kts` 의 끝에 다음 추가:
+
+```kotlin
+val axpClasspathManifest = layout.buildDirectory.file("axp/runtime-classpath.txt")
+val axpEmitClasspath = tasks.register("axpEmitClasspath") {
+    val cpProvider = configurations.named("debugRuntimeClasspath")
+    inputs.files(cpProvider)
+    outputs.file(axpClasspathManifest)
+    doLast {
+        val cp = cpProvider.get()
+        val artifacts = cp.resolvedConfiguration.resolvedArtifacts
+            .map { it.file.absolutePath }
+            .distinct()
+            .sorted()
+        val outFile = axpClasspathManifest.get().asFile
+        outFile.parentFile.mkdirs()
+        outFile.writeText(artifacts.joinToString("\n"))
+    }
+}
+afterEvaluate {
+    tasks.named("assembleDebug").configure { finalizedBy(axpEmitClasspath) }
+}
+```
 
 - [ ] **Step 2: 한 번 수동 실행 — manifest 가 expected 위치에 생성되는지 확인**
 
@@ -886,12 +1084,25 @@ Expected: 파일 존재, 첫 5 라인이 절대경로, 라인수 ≥ 30 (transit
 
 ---
 
-## Task 10: `LayoutlibRendererIntegrationTest` enable + 첫 실측 + B2 contingency 결정
+## Task 9 (was 10): `LayoutlibRendererIntegrationTest` enable + 첫 실측 + B2 contingency 결정
 
 **Files:**
 - Modify: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/LayoutlibRendererIntegrationTest.kt`
 
-- [ ] **Step 1: `@Disabled` 제거 + spec §4.8 의 코드 적용 (SUCCESS assertion 활성, sampleAppModuleRoot 주입)**
+- [ ] **Step 1: `@Disabled` 제거 + spec §4.8 의 코드 적용** (B11: `assumeTrue` → `requireNotNull` for sampleAppModuleRoot — fixture 누락은 silent SKIP 이 아닌 정직한 FAIL)
+
+`locateSampleAppModuleRoot()` 메서드:
+
+```kotlin
+private fun locateSampleAppModuleRoot(): Path {
+    val found = FixtureDiscovery.locateModuleRoot(null)
+    return requireNotNull(found) {
+        "sample-app module root 없음 — fixture/sample-app 확인 + `(cd fixture/sample-app && ./gradlew :app:assembleDebug)` 실행"
+    }.toAbsolutePath().normalize()
+}
+```
+
+(`locateDistDir` / 기존 `locateFixtureRoot` 의 `assumeTrue` 패턴은 backward compat 위해 유지 — W3D2 시점부터 의도적 SKIP 패턴.)
 
 - [ ] **Step 2: 통합 테스트 실행**
 
@@ -910,7 +1121,14 @@ Expected: 1 test PASS or FAIL — 결과에 따라 분기.
   - 다시 실행 → PASS 기대.
 
   **(C) FAIL with 다른 원인** (e.g., R class missing, ClassNotFoundException 의 다른 cause):
-  - stack trace 분석 → 본 플랜의 누락된 컴포넌트 식별 → 그 컴포넌트의 task 재진입 / 신규 task 추가.
+  - **HARD STOP — 자율 분기 금지** (B7 round 2 페어 컨버전스).
+  - 다음 commands 로 evidence 만 수집:
+    ```bash
+    ./server/gradlew -p server :layoutlib-worker:test --tests "dev.axp.layoutlib.worker.LayoutlibRendererIntegrationTest" -PincludeTags=integration --info 2>&1 | tail -200 \
+      > docs/work_log/2026-04-29_w3d3-l3-classloader/branch-c-evidence.md
+    ```
+  - branch-c-evidence.md 에 stack trace + first 50 라인 + git status 첨부.
+  - **본 task 를 PASS 로 종결하지 않음**. handoff.md 에 "branch (C) hit — 신규 plan 필요" 기록 후 사용자에게 escalation. 신규 task 추가 / improvise 금지.
 
 - [ ] **Step 4: 전체 게이트 실행**
 
@@ -927,7 +1145,7 @@ Expected: 모든 게이트 통과. Unit 118+ → 130+ (15 신규), integration 1
 
 ---
 
-## Task 11: work_log + handoff 업데이트
+## Task 10 (was 11): work_log + handoff 업데이트
 
 **Files:**
 - Create: `docs/work_log/2026-04-29_w3d3-l3-classloader/session-log.md`
@@ -946,19 +1164,20 @@ Expected: 모든 게이트 통과. Unit 118+ → 130+ (15 신규), integration 1
 
 ## Self-Review (writing-plans 종결 체크리스트)
 
-**Spec coverage**:
-- §0 페어 리뷰 결과 → Task 1-10 구현으로 모두 반영.
-- §1.1 deliverables (manifest, AAR loader, callback override, integration enable) → Task 1-4, 6, 9, 10.
+**Spec coverage** (v2 task 번호 기준):
+- §0 페어 리뷰 결과 (round 1 + round 2) → Task 1-9 구현으로 모두 반영.
+- §1.1 deliverables (manifest, AAR loader, callback override, integration enable) → Task 1-4, 6, 8, 9.
 - §1.2 out-of-scope → 본 플랜 미터치 (W3D4 carry).
-- §1.3 acceptance gate (T1) → Task 10 Step 2.
-- §2 컴포넌트 분해 → Task 별 1:1 매핑 (C0/C1/C2/C3/C4/C5/C6/C7/C8 → Task 5/9/2/3/4/1/6/7/10).
-- §3 데이터 흐름 → Task 7+8 의 LayoutlibRenderer 수정으로 wire.
+- §1.3 acceptance gate (T1, SUCCESS + PNG > 1000) → Task 9 Step 2.
+- §2 컴포넌트 분해 → Task 별 1:1 매핑 (C0/C1/C2/C3/C4/C5/C6/C7/C7b/C8 → Task 5 / 8 / 2 / 3 / 4 / 1 / 6 / 7 / 7 / 9).
+- §3 데이터 흐름 → Task 7 의 LayoutlibRenderer 수정으로 wire.
 - §4 컴포넌트 스펙 → Task 1-7 의 코드 블록.
-- §5 테스트 전략 → Task 1-4, 6 의 단위 + Task 10 의 통합.
-- §6 위험 → Task 10 Step 3 의 분기 (R1/R3/R4).
-- §7 페어 리뷰 Q1-Q5 → spec round 2 에서 모두 처리, 코드 반영.
-- §8 변경 로그 → Task 11 step 3 가 plan/08 에 추가.
-- §9 contingency → Task 10 Step 3 (B).
+- §5 테스트 전략 → Task 1-4, 6 의 단위 (23 신규) + Task 9 의 통합 1.
+- §6 위험 → Task 9 Step 3 의 분기 (R1/R3/R4).
+- §7 페어 리뷰 Q1-Q5 (round 1) → spec round 2 + plan v2 에서 모두 처리, 코드 반영. **Q1 정정** (Q1 round 1 convergence ↔ B5 round 2 plan empirical 정정).
+- §8 변경 로그 → Task 10 step 3 가 plan/08 에 추가.
+- §9 contingency → Task 9 Step 3 (B).
+- **Round 2 plan-review B1-B11**: 본 v2 의 §0 헤더에 1:1 매핑 — 모두 반영 완료.
 
 **No placeholders**: 모든 Task 가 exact code + exact commands + exact expected output. "TODO" 없음.
 
@@ -973,6 +1192,6 @@ Expected: 모든 게이트 통과. Unit 118+ → 130+ (15 신규), integration 1
 1. **Subagent-Driven (recommended)** — fresh subagent per task, two-stage review.
 2. **Inline Execution** — batch with checkpoints.
 
-**Pre-execution gating**: 본 플랜 자체에 대한 round 2 페어 리뷰 (Codex+Claude 1:1, planning phase 마지막 게이트) 가 먼저 수행됨 — verdict GO 또는 GO_WITH_FOLLOWUPS 일 때만 구현 phase 진입.
+**Pre-execution gating**: round 2 페어 리뷰 (Codex NO_GO + Claude GO_WITH_FOLLOWUPS) 의 모든 컨버전트 fix (B1-B11) 가 본 v2 에 반영. divergence on severity (NO_GO vs GO_WITH_FOLLOWUPS) — direction 컨버전. 본 v2 가 양측 모든 issue 를 메우므로 추가 round 3 페어 리뷰 없이 구현 phase 진입.
 
 **Execution choice**: Subagent-Driven (CLAUDE.md "Implementation phase = Claude-only, no Codex" 정책 + W3D2 에서 검증된 패턴).

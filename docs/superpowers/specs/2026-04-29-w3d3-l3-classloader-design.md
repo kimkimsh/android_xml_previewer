@@ -21,7 +21,7 @@
 - **B4 (Codex-only, valid)**: magic strings 를 `ClassLoaderConstants` 로 (§4.5).
 - **Manifest dedup** (Claude-F4): `.distinct()` 추가 (§4.1).
 - **Atomic AAR write** (Codex-B2-followup): temp + ATOMIC_MOVE (§4.3).
-- **Q1**: `afterEvaluate` 제거, 직접 `tasks.named("assembleDebug").configure { finalizedBy(...) }` (§4.1).
+- **Q1 (round 2 정정)**: ~~`afterEvaluate` 제거~~ — round 2 페어 리뷰에서 empirical 검증 결과 AGP 8.x 의 `assembleDebug` 가 variant API 등록이라 top-level `tasks.named` 시점에 미존재 → `UnknownTaskException`. **`afterEvaluate { ... }` 필수**. Round 1 convergence 가 잘못된 가정에 기반했음 (둘 다 empirical 검증 안 함). §4.1 본문은 `afterEvaluate` 포함 패턴.
 - **Q2**: mtime 유지 (Gradle modules-2 cache 의 content-hash dir 가정).
 - **Q3**: Codex 입장 채택 — `InvocationTargetException` cause unwrap (§4.6).
 - **Q4**: lazy build (option A) 유지 (§4.7).
@@ -222,8 +222,11 @@ val axpEmitClasspath = tasks.register("axpEmitClasspath") {
         outFile.writeText(artifacts.joinToString("\n"))
     }
 }
-// Q1 (Codex+Claude convergent): afterEvaluate 제거. tasks.named 가 이미 lazy.
-tasks.named("assembleDebug").configure { finalizedBy(axpEmitClasspath) }
+// Q1 round 2 정정: AGP 8.x `assembleDebug` 는 variant API 등록 → top-level `tasks.named`
+// 시점에 미존재 → UnknownTaskException. `afterEvaluate` 필수 (empirical 검증 완료).
+afterEvaluate {
+    tasks.named("assembleDebug").configure { finalizedBy(axpEmitClasspath) }
+}
 ```
 
 **계약**:
