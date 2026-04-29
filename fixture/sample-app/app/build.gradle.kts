@@ -44,3 +44,28 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("com.google.android.material:material:1.12.0")
 }
+
+// W3D3-L3-CLASSLOADER (round 2 페어): server/layoutlib-worker 가 sample-app 의 resolved
+// runtime classpath 를 manifest 로 받아 자체 URLClassLoader 를 구성한다. 본 task 가 single
+// source of truth — Gradle modules-2 cache 의 transforms-* hash dir 불안정성을 회피.
+val axpClasspathManifest = layout.buildDirectory.file("axp/runtime-classpath.txt")
+val axpEmitClasspath = tasks.register("axpEmitClasspath") {
+    val cpProvider = configurations.named("debugRuntimeClasspath")
+    inputs.files(cpProvider)
+    outputs.file(axpClasspathManifest)
+    doLast {
+        val cp = cpProvider.get()
+        val artifacts = cp.resolvedConfiguration.resolvedArtifacts
+            .map { it.file.absolutePath }
+            .distinct()
+            .sorted()
+        val outFile = axpClasspathManifest.get().asFile
+        outFile.parentFile.mkdirs()
+        outFile.writeText(artifacts.joinToString("\n"))
+    }
+}
+// W3D3 round 2 정정: AGP 8.x assembleDebug 는 variant API 등록 → top-level tasks.named
+// 시점에 미존재 → UnknownTaskException. afterEvaluate 필수 (empirical 검증).
+afterEvaluate {
+    tasks.named("assembleDebug").configure { finalizedBy(axpEmitClasspath) }
+}
