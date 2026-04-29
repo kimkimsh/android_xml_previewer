@@ -34,4 +34,25 @@ internal object ClassLoaderConstants {
      */
     const val R_JAR_RELATIVE_PATH =
         "app/build/intermediates/compile_and_runtime_not_namespaced_r_class_jar/debug/processDebugResources/R.jar"
+
+    /** Standard JVM .class file suffix used in classpath entry name checks. */
+    const val CLASS_FILE_SUFFIX = ".class"
+
+    /** Java inner class separator (e.g., `R$attr`). */
+    const val INNER_CLASS_SEPARATOR = '$'
+
+    /** R 클래스 이름 접미사 — `<package>/R$<type>` 형태에서 `<package>/R` 부분 검증용. */
+    const val R_CLASS_NAME_SUFFIX = "/R"
+
+    /** JVM internal name separator (`/`). */
+    const val INTERNAL_NAME_SEPARATOR = '/'
+
+    /** JVM external (Java) name separator (`.`). */
+    const val EXTERNAL_NAME_SEPARATOR = '.'
+
+    /**
+     * AarExtractor 의 cache key 버전. NAME_MAP 또는 transformer 변경 시 bump 하여
+     * stale cache 회피. round 2 D1 신설.
+     */
+    const val REWRITE_VERSION = "v1"
 }

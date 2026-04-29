@@ -45,6 +45,9 @@ dependencies {
     // 컴파일 타임에 참조하므로 implementation 으로 승격.
     implementation("net.sf.kxml:kxml2:2.3.0")
     runtimeOnly("com.ibm.icu:icu4j:73.2")
+
+    implementation("org.ow2.asm:asm:9.7")
+    implementation("org.ow2.asm:asm-commons:9.7")
 }
 
 application {

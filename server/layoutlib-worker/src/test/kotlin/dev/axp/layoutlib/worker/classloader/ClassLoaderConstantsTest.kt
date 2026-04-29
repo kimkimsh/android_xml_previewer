@@ -24,4 +24,26 @@ class ClassLoaderConstantsTest {
         val expected = "app/build/intermediates/compile_and_runtime_not_namespaced_r_class_jar/debug/processDebugResources/R.jar"
         assertEquals(expected, ClassLoaderConstants.R_JAR_RELATIVE_PATH)
     }
+
+    @Test
+    fun `class file suffix 가 dot 으로 시작`() {
+        assertTrue(ClassLoaderConstants.CLASS_FILE_SUFFIX.startsWith("."))
+    }
+
+    @Test
+    fun `inner class separator 는 dollar`() {
+        assertEquals('$', ClassLoaderConstants.INNER_CLASS_SEPARATOR)
+    }
+
+    @Test
+    fun `R class name suffix 는 slash R`() {
+        assertEquals("/R", ClassLoaderConstants.R_CLASS_NAME_SUFFIX)
+    }
+
+    @Test
+    fun `internal name 과 external name separator + REWRITE_VERSION 형식`() {
+        assertEquals('/', ClassLoaderConstants.INTERNAL_NAME_SEPARATOR)
+        assertEquals('.', ClassLoaderConstants.EXTERNAL_NAME_SEPARATOR)
+        assertTrue(ClassLoaderConstants.REWRITE_VERSION.matches(Regex("v[0-9]+")))
+    }
 }
