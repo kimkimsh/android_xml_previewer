@@ -36,13 +36,20 @@ object SharedLayoutlibRenderer
         distDir: Path,
         fixtureRoot: Path,
         sampleAppModuleRoot: Path,
+        themeName: String,
         fallback: PngRenderer?,
     ): LayoutlibRenderer
     {
-        val requested = RendererArgs(distDir, fixtureRoot, sampleAppModuleRoot)
+        val requested = RendererArgs(distDir, fixtureRoot, sampleAppModuleRoot, themeName)
         SharedRendererBinding.verify(boundArgs, requested)
         instance?.let { return it }
-        val created = LayoutlibRenderer(distDir, fallback, fixtureRoot, sampleAppModuleRoot)
+        val created = LayoutlibRenderer(
+            distDir = distDir,
+            fixtureRoot = fixtureRoot,
+            sampleAppModuleRoot = sampleAppModuleRoot,
+            themeName = themeName,
+            fallback = fallback,
+        )
         instance = created
         boundArgs = requested
         return created

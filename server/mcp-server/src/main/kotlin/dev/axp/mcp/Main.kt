@@ -6,6 +6,7 @@ import dev.axp.http.PreviewServer
 import dev.axp.layoutlib.worker.DistDiscovery
 import dev.axp.layoutlib.worker.FixtureDiscovery
 import dev.axp.layoutlib.worker.LayoutlibRenderer
+import dev.axp.layoutlib.worker.session.SessionConstants
 import dev.axp.protocol.Versions
 import dev.axp.protocol.mcp.Capabilities
 import dev.axp.protocol.render.PngRenderer
@@ -132,9 +133,10 @@ private fun chooseRenderer(parsed: CliArgs): PngRenderer {
     return try {
         LayoutlibRenderer(
             distDir = dist.toAbsolutePath().normalize(),
-            fallback = PlaceholderPngRenderer(),
             fixtureRoot = fixture.toAbsolutePath().normalize(),
             sampleAppModuleRoot = sampleAppModuleRoot.toAbsolutePath().normalize(),
+            themeName = SessionConstants.DEFAULT_FIXTURE_THEME,
+            fallback = PlaceholderPngRenderer(),
         )
     } catch (e: Throwable) {
         System.err.println(

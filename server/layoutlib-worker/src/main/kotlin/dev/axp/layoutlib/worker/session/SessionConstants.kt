@@ -42,6 +42,14 @@ object SessionConstants {
     const val DEFAULT_FRAMEWORK_THEME = "Theme.Material.Light.NoActionBar"
 
     /**
+     * W3D4 §3.1 (T8): fixture-app 의 default theme — `Theme.AxpFixture`.
+     * sample-app 의 themes.xml 에 정의된 root style. Material3 chain 의 시작점
+     * (Theme.AxpFixture → Material3.DayNight.NoActionBar → ... → android:Theme).
+     * LayoutlibRenderer ctor 의 themeName 인자로 caller 가 명시 전달.
+     */
+    const val DEFAULT_FIXTURE_THEME = "Theme.AxpFixture"
+
+    /**
      * UI_MODE_TYPE_NORMAL (0x01) | UI_MODE_NIGHT_NO (0x10) = 0x11 (17).
      * android.content.res.Configuration 의 uiMode 필드 값.
      * FolderConfiguration 매칭 시 base `values/` (qualifier 없음) 리소스 선택 보장.

@@ -1,6 +1,7 @@
 package dev.axp.layoutlib.worker
 
 import com.android.ide.common.rendering.api.Result
+import dev.axp.layoutlib.worker.session.SessionConstants
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
@@ -33,6 +34,7 @@ class LayoutlibRendererIntegrationTest {
             distDir = dist,
             fixtureRoot = layoutRoot,
             sampleAppModuleRoot = moduleRoot,
+            themeName = SessionConstants.DEFAULT_FIXTURE_THEME,
             fallback = null,
         )
         val (layoutName, bytes) = renderWithMaterialFallback(

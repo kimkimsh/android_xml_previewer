@@ -7,8 +7,9 @@ import com.android.ide.common.rendering.api.SessionParams
 import dev.axp.layoutlib.worker.classloader.ClassLoaderConstants
 import dev.axp.layoutlib.worker.classloader.RJarSymbolSeeder
 import dev.axp.layoutlib.worker.classloader.SampleAppClassLoader
-import dev.axp.layoutlib.worker.resources.FrameworkRenderResources
-import dev.axp.layoutlib.worker.resources.FrameworkResourceValueLoader
+import dev.axp.layoutlib.worker.resources.AppLibraryResourceConstants
+import dev.axp.layoutlib.worker.resources.LayoutlibRenderResources
+import dev.axp.layoutlib.worker.resources.LayoutlibResourceValueLoader
 import dev.axp.layoutlib.worker.resources.ResourceLoaderConstants
 import dev.axp.layoutlib.worker.session.LayoutPullParserAdapter
 import dev.axp.layoutlib.worker.session.MinimalLayoutlibCallback
@@ -47,10 +48,12 @@ import kotlin.io.path.absolutePathString
  */
 class LayoutlibRenderer(
     private val distDir: Path,
-    private val fallback: PngRenderer?,
     private val fixtureRoot: Path,
     private val sampleAppModuleRoot: Path,
-) : PngRenderer {
+    private val themeName: String,
+    private val fallback: PngRenderer?,
+) : PngRenderer
+{
 
     private val bootstrap = LayoutlibBootstrap(distDir)
 
@@ -166,12 +169,17 @@ class LayoutlibRenderer(
         }
 
         val parser = LayoutPullParserAdapter.fromFile(layoutPath)
-        // W3D1 3b-values: framework resource VALUE loader 가 10 XML 을 파싱하여 RenderResources 에 주입.
-        // JVM-wide cache 라 첫 호출만 파싱 비용 발생.
-        val bundle = FrameworkResourceValueLoader.loadOrGet(
-            distDir.resolve(ResourceLoaderConstants.DATA_DIR)
+        // W3D4 §3.1 (T8): W3D1 framework-only loader 가 3-입력 통합 loader 로 흡수됨.
+        // framework + sample-app + 41 AAR 의 values XML 을 ANDROID/RES_AUTO 2-bucket 으로 build.
+        // JVM-wide cache (Args 3-tuple key) — 첫 호출만 파싱 비용 발생.
+        val bundle = LayoutlibResourceValueLoader.loadOrGet(
+            LayoutlibResourceValueLoader.Args(
+                distDataDir = distDir.resolve(ResourceLoaderConstants.DATA_DIR),
+                sampleAppRoot = sampleAppModuleRoot,
+                runtimeClasspathTxt = sampleAppModuleRoot.resolve(AppLibraryResourceConstants.RUNTIME_CLASSPATH_TXT_PATH),
+            )
         )
-        val resources = FrameworkRenderResources(bundle, SessionConstants.DEFAULT_FRAMEWORK_THEME)
+        val resources = LayoutlibRenderResources(bundle, themeName)
         val params: SessionParams = SessionParamsFactory.build(
             layoutParser = parser,
             callback = MinimalLayoutlibCallback({ ensureSampleAppClassLoader() }, ::seedRJarSymbols),

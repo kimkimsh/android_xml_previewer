@@ -1,5 +1,6 @@
 package dev.axp.layoutlib.worker
 
+import dev.axp.layoutlib.worker.session.SessionConstants
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -27,7 +28,13 @@ class SharedLayoutlibRendererIntegrationTest {
         val fixture = locateFixtureRoot()
         val moduleRoot = locateSampleAppModuleRoot()
 
-        val r = SharedLayoutlibRenderer.getOrCreate(dist, fixture, moduleRoot, fallback = null)
+        val r = SharedLayoutlibRenderer.getOrCreate(
+            distDir = dist,
+            fixtureRoot = fixture,
+            sampleAppModuleRoot = moduleRoot,
+            themeName = SessionConstants.DEFAULT_FIXTURE_THEME,
+            fallback = null,
+        )
 
         assertNotNull(r)
     }
@@ -37,9 +44,21 @@ class SharedLayoutlibRendererIntegrationTest {
         val dist = locateDistDir()
         val fixture = locateFixtureRoot()
         val moduleRoot = locateSampleAppModuleRoot()
-        val r1 = SharedLayoutlibRenderer.getOrCreate(dist, fixture, moduleRoot, fallback = null)
+        val r1 = SharedLayoutlibRenderer.getOrCreate(
+            distDir = dist,
+            fixtureRoot = fixture,
+            sampleAppModuleRoot = moduleRoot,
+            themeName = SessionConstants.DEFAULT_FIXTURE_THEME,
+            fallback = null,
+        )
 
-        val r2 = SharedLayoutlibRenderer.getOrCreate(dist, fixture, moduleRoot, fallback = null)
+        val r2 = SharedLayoutlibRenderer.getOrCreate(
+            distDir = dist,
+            fixtureRoot = fixture,
+            sampleAppModuleRoot = moduleRoot,
+            themeName = SessionConstants.DEFAULT_FIXTURE_THEME,
+            fallback = null,
+        )
 
         assertSame(r1, r2, "같은 args 는 동일 인스턴스여야 함 (referential equality)")
     }
@@ -50,12 +69,24 @@ class SharedLayoutlibRendererIntegrationTest {
         val fixture = locateFixtureRoot()
         val moduleRoot = locateSampleAppModuleRoot()
         // bound 상태 확보 — 첫 getOrCreate.
-        SharedLayoutlibRenderer.getOrCreate(dist, fixture, moduleRoot, fallback = null)
+        SharedLayoutlibRenderer.getOrCreate(
+            distDir = dist,
+            fixtureRoot = fixture,
+            sampleAppModuleRoot = moduleRoot,
+            themeName = SessionConstants.DEFAULT_FIXTURE_THEME,
+            fallback = null,
+        )
 
         val differentFixture = fixture.resolveSibling("different")
 
         val ex = assertThrows<IllegalStateException> {
-            SharedLayoutlibRenderer.getOrCreate(dist, differentFixture, moduleRoot, fallback = null)
+            SharedLayoutlibRenderer.getOrCreate(
+                distDir = dist,
+                fixtureRoot = differentFixture,
+                sampleAppModuleRoot = moduleRoot,
+                themeName = SessionConstants.DEFAULT_FIXTURE_THEME,
+                fallback = null,
+            )
         }
         assertTrue(
             ex.message!!.contains("불일치"),

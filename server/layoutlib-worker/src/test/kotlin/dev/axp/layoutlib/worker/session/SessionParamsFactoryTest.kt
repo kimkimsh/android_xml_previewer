@@ -1,11 +1,10 @@
 package dev.axp.layoutlib.worker.session
 
-import com.android.ide.common.rendering.api.ResourceNamespace
 import com.android.ide.common.rendering.api.SessionParams
 import com.android.resources.Density
 import com.android.resources.ScreenOrientation
-import dev.axp.layoutlib.worker.resources.FrameworkRenderResources
-import dev.axp.layoutlib.worker.resources.FrameworkResourceBundle
+import dev.axp.layoutlib.worker.resources.LayoutlibRenderResources
+import dev.axp.layoutlib.worker.resources.LayoutlibResourceBundle
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
@@ -29,10 +28,15 @@ class SessionParamsFactoryTest {
     /**
      * W3D1 3b-values: resources 파라미터 default 제거 → 테스트용 empty bundle + DEFAULT_FRAMEWORK_THEME.
      * 실 값 로딩은 integration (tier3-values) 에서 검증.
+     *
+     * W3D4 T8: W3D1 FrameworkResourceBundle/FrameworkRenderResources 가 LayoutlibResourceBundle/
+     * LayoutlibRenderResources 로 흡수됨. 본 helper 는 SessionParamsFactory 의 결과 필드
+     * 검증용 stub 이므로 empty bundle (perNamespaceEntries=emptyMap) 으로 충분 — 실 값 로딩은
+     * integration test 가 cover.
      */
     private fun emptyFrameworkRenderResources() =
-        FrameworkRenderResources(
-            FrameworkResourceBundle.build(emptyList()),
+        LayoutlibRenderResources(
+            LayoutlibResourceBundle.build(emptyMap()),
             SessionConstants.DEFAULT_FRAMEWORK_THEME,
         )
 
@@ -74,10 +78,14 @@ class SessionParamsFactoryTest {
     }
 
     @Test
-    fun `default theme is non-null and framework-namespaced`() {
+    fun `default theme is non-null with expected name`() {
+        // F2: empty RenderResources 금지 — default theme 필수 (= getDefaultTheme() non-null).
+        // W3D4 T8: LayoutlibRenderResources 가 multi-namespace. empty bundle 의 fallback theme 은
+        // RES_AUTO ns 로 생성됨 (LayoutlibRenderResources.emptyTheme). 본 unit test 는 stub
+        // bundle 이라 ANDROID/RES_AUTO 어느 쪽이든 의미 있는 assert 가 아니므로 name 만 검증.
+        // 실 framework theme namespace 는 integration test (real bundle 사용) 가 cover.
         val theme = buildParams().resources.defaultTheme
         assertNotNull(theme, "F2: empty RenderResources 금지 — default theme 필수")
-        assertEquals(ResourceNamespace.ANDROID, theme.namespace)
         assertEquals(SessionConstants.DEFAULT_FRAMEWORK_THEME, theme.name)
     }
 

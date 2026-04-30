@@ -144,6 +144,84 @@ class NamespaceAwareValueParserTest
         assertEquals(8, entries.size, "총 4 simple + 2 style + 2 attr = 8")
     }
 
+    @Test
+    fun `string with nested HTML markup 가 text 만 추출 (mixed content)`()
+    {
+        // T8 fix (W3D1 readText 패턴 회복): StAX elementText 가 mixed content 시 throw 하던 case.
+        // 실 Android AAR values.xml 에 흔함 (e.g., 'Click <b>here</b>'). 본 fix 후 markup 은
+        // strip 되고 그 안의 text 도 누적된다.
+        val xml = tmp(
+            """<resources>
+                <string name="welcome">Hello <b>world</b> from <i>Material</i></string>
+            </resources>""",
+        )
+        val entries = NamespaceAwareValueParser.parse(xml, ResourceNamespace.RES_AUTO, "com.foo")
+        assertEquals(1, entries.size)
+        val e = entries[0] as ParsedNsEntry.SimpleValue
+        assertEquals("welcome", e.name)
+        assertEquals(ResourceType.STRING, e.type)
+        // mixed content text 만 (markup 자체는 strip).
+        assertEquals("Hello world from Material", e.value)
+    }
+
+    @Test
+    fun `xliff g placeholder 가 inline text 로 통합`()
+    {
+        // 실 Android value 에 흔한 패턴: <string>Hello <xliff:g id="user">%1$s</xliff:g></string>.
+        // xliff:g 는 mixed content 의 또 다른 형태 — START_ELEMENT 안 text 도 outer 누적에 합류.
+        // Kotlin string interpolation 회피: '$' 를 escape 하기보다 concat 으로 안전 작성.
+        val placeholder = "%1" + "\$" + "s"
+        val xml = tmp(
+            """<resources>
+                <string name="greeting">Hello <xliff:g id="user" xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">$placeholder</xliff:g></string>
+            </resources>""",
+        )
+        val entries = NamespaceAwareValueParser.parse(xml, ResourceNamespace.RES_AUTO, "com.foo")
+        assertEquals(1, entries.size)
+        val e = entries[0] as ParsedNsEntry.SimpleValue
+        assertEquals("greeting", e.name)
+        // outer text "Hello " + xliff:g 안 text "%1${'$'}s" 누적.
+        assertEquals("Hello $placeholder", e.value)
+    }
+
+    @Test
+    fun `declare-styleable 안 cross-NS attr ref (android prefix) 는 skip — local def 만 emit`()
+    {
+        // T8 fix: real Material/AppCompat AAR 의 declare-styleable 에 흔한 패턴.
+        // 'android:visible' 같은 framework attr ref 는 local def 아님 → AttrDef emit 안 함.
+        // ResourceReference name 이 ':' 를 disallow 하므로 emit 시 AssertionError.
+        val xml = tmp(
+            """<resources>
+                <declare-styleable name="MyView">
+                    <attr name="android:visible" />
+                    <attr name="myCustomAttr" format="dimension" />
+                    <attr name="android:textSize" />
+                </declare-styleable>
+            </resources>""",
+        )
+        val entries = NamespaceAwareValueParser.parse(xml, ResourceNamespace.RES_AUTO, "com.foo")
+        val attrs = entries.filterIsInstance<ParsedNsEntry.AttrDef>().map { it.name }.toSet()
+        // local def 만 (cross-NS ref 둘 다 skip)
+        assertEquals(setOf("myCustomAttr"), attrs)
+    }
+
+    @Test
+    fun `top-level cross-NS attr ref 도 skip`()
+    {
+        // 드물지만 가능한 경우 — top-level 에 namespace-prefixed attr.
+        // 'app:' 등 ANDROID 외 prefix 도 동일 정책 (모든 ':' 포함 name 은 ref 로 간주).
+        val xml = tmp(
+            """<resources>
+                <attr name="android:gravity" />
+                <attr name="myAttr" />
+                <attr name="app:fooBar" />
+            </resources>""",
+        )
+        val entries = NamespaceAwareValueParser.parse(xml, ResourceNamespace.RES_AUTO, "com.foo")
+        val attrs = entries.filterIsInstance<ParsedNsEntry.AttrDef>().map { it.name }.toSet()
+        assertEquals(setOf("myAttr"), attrs)
+    }
+
     private fun tmp(content: String): Path
     {
         val f = Files.createTempFile("vals", ".xml")

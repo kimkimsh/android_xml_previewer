@@ -95,7 +95,12 @@ internal object NamespaceAwareValueParser
                         TAG_ATTR ->
                         {
                             val name = reader.getAttributeValue(null, ATTR_NAME) ?: ""
-                            if (name.isNotEmpty() && seenAttrNames.add(name))
+                            // T8 fix: cross-NS attr ref (e.g., `<attr name="android:visible" />`) 는
+                            // local def 가 아니라 다른 namespace 의 attr 참조 → emit 하면 ResourceReference
+                            // ctor 가 'Qualified name is not allowed' AssertionError 를 throw. aapt2 도
+                            // 동일 정책 (cross-NS ref 는 새 attr 정의가 아님). prefix 종류 제한 없이
+                            // ':' 포함 모든 name 을 skip (`app:`, `androidx:` 등 향후 변형도 동일 시맨틱).
+                            if (name.isNotEmpty() && !name.contains(NS_NAME_SEPARATOR_CHAR) && seenAttrNames.add(name))
                             {
                                 entries += ParsedNsEntry.AttrDef(name, namespace, sourcePackage)
                             }
@@ -112,7 +117,9 @@ internal object NamespaceAwareValueParser
                             val typeAttr = reader.getAttributeValue(null, ATTR_TYPE)
                             val resType = typeAttr?.let { ResourceType.fromXmlValue(it) }
                             val name = reader.getAttributeValue(null, ATTR_NAME) ?: ""
-                            val value = reader.elementText ?: ""
+                            // T8 fix (W3D1 readText 패턴 회복): mixed content 허용. 자식 START_ELEMENT
+                            // (e.g. <xliff:g>) 내부 text 도 누적; markup 자체는 strip.
+                            val value = readElementText(reader)
                             if (resType != null && name.isNotEmpty())
                             {
                                 entries += ParsedNsEntry.SimpleValue(resType, name, value, namespace, sourcePackage)
@@ -144,7 +151,9 @@ internal object NamespaceAwareValueParser
             TAG_FRACTION -> ResourceType.FRACTION
             else -> return null
         }
-        val value = reader.elementText ?: ""
+        // T8 fix (W3D1 readText 패턴 회복): StAX elementText 가 mixed content 시 throw →
+        // 실 AAR 의 <string>Hello <b>world</b></string> / <xliff:g> 등 처리 가능.
+        val value = readElementText(reader)
         return ParsedNsEntry.SimpleValue(type, name, value, namespace, sourcePackage)
     }
 
@@ -163,7 +172,9 @@ internal object NamespaceAwareValueParser
             if (event == XMLStreamConstants.START_ELEMENT && reader.localName == TAG_ITEM)
             {
                 val itemName = reader.getAttributeValue(null, ATTR_NAME) ?: ""
-                val itemValue = reader.elementText ?: ""
+                // T8 fix (W3D1 readText 패턴 회복): <item> 내부 mixed content 허용.
+                // 실 Material AAR 의 일부 style <item> 도 inline markup 가능 (e.g. <xliff:g>).
+                val itemValue = readElementText(reader)
                 if (itemName.isNotEmpty()) items += ParsedNsEntry.StyleDef.StyleItem(itemName, itemValue)
             }
             else if (event == XMLStreamConstants.START_ELEMENT)
@@ -194,7 +205,11 @@ internal object NamespaceAwareValueParser
             if (event == XMLStreamConstants.START_ELEMENT && reader.localName == TAG_ATTR)
             {
                 val name = reader.getAttributeValue(null, ATTR_NAME) ?: ""
-                if (name.isNotEmpty() && seen.add(name))
+                // T8 fix: declare-styleable 안 cross-NS attr ref (e.g., `<attr name="android:visible" />`)
+                // 는 local def 가 아니라 그 styleable 이 framework attr 을 포함한다는 declaration —
+                // 새 attr 이 생성되지 않음. real Material/AppCompat AAR 에 매우 흔함 (수백 건 / dist).
+                // top-level 분기와 동일 정책으로 ':' 포함 name 은 skip.
+                if (name.isNotEmpty() && !name.contains(NS_NAME_SEPARATOR_CHAR) && seen.add(name))
                 {
                     entries += ParsedNsEntry.AttrDef(name, namespace, sourcePackage)
                 }
@@ -232,6 +247,40 @@ internal object NamespaceAwareValueParser
         }
     }
 
+    /**
+     * T8 fix (W3D1 FrameworkValueParser.readText 패턴 회복):
+     * StAX `XMLStreamReader.elementText` 는 mixed content 시 `XMLStreamException`을 던진다
+     * ("elementGetText() function expects text only element but START_ELEMENT was encountered").
+     * 실 Android AAR `values.xml` 은 흔히 mixed content 를 포함한다:
+     *  - `<string>Hello <b>world</b></string>` (inline HTML markup)
+     *  - `<string>Page <xliff:g id="num">%1$d</xliff:g></string>` (translation placeholder)
+     *  - styled span (`<a>`, `<u>`, `<i>`) inside string resources
+     *
+     * 본 helper 는 W3D1 의 KXmlPull 기반 `readText` 와 동일 의미 — 모든 character data (CHARACTERS
+     * / CDATA) 를 누적하고, 자식 START_ELEMENT 는 통과 (markup 자체는 strip; 그 자식 내부
+     * text 는 누적). entity reference / comment / processing-instruction 은 무시.
+     *
+     * 호출 시점: reader cursor 가 START_ELEMENT 위치 (e.g., `<dimen>`, `<string>`, `<item>`).
+     * 종료: depth=0 도달 (= 매칭 END_ELEMENT).
+     */
+    private fun readElementText(reader: XMLStreamReader): String
+    {
+        val sb = StringBuilder()
+        var depth = 1
+        while (reader.hasNext() && depth > 0)
+        {
+            when (reader.next())
+            {
+                XMLStreamConstants.CHARACTERS -> sb.append(reader.text)
+                XMLStreamConstants.CDATA -> sb.append(reader.text)
+                XMLStreamConstants.START_ELEMENT -> depth++
+                XMLStreamConstants.END_ELEMENT -> depth--
+                // entity ref / comment / PI 는 silently ignore (W3D1 readText 동일 정책).
+            }
+        }
+        return sb.toString()
+    }
+
     // 태그/속성 이름 상수 — CLAUDE.md zero-magic-strings (W3D1 FrameworkValueParser 패턴 inherit).
     private const val TAG_RESOURCES = "resources"
     private const val TAG_DIMEN = "dimen"
@@ -248,4 +297,11 @@ internal object NamespaceAwareValueParser
     private const val ATTR_NAME = "name"
     private const val ATTR_PARENT = "parent"
     private const val ATTR_TYPE = "type"
+
+    /**
+     * T8 fix: cross-namespace ref separator in attr name (e.g., `android:visible`, `app:foo`).
+     * `:` 포함 attr name 은 정의가 아닌 ref → AttrDef emit 에서 skip. CLAUDE.md
+     * "Zero Tolerance for Magic Numbers/Strings" — char literal 도 named constant 로.
+     */
+    private const val NS_NAME_SEPARATOR_CHAR = ':'
 }

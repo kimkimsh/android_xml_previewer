@@ -15,19 +15,24 @@ class SharedRendererBindingTest {
     private val moduleA = Paths.get("/module/a")
     private val moduleB = Paths.get("/module/b")
 
+    // W3D4 T8: RendererArgs 가 themeName 까지 포함하는 4-tuple. 본 unit test 는 verify() 의
+    // equality 동작만 검사하므로 임의 fixture theme 문자열 사용.
+    private val themeA = "Theme.AxpFixture"
+    private val themeB = "Theme.Other"
+
     @Test
     fun `bound 가 null 이면 항상 통과 (첫 바인드)`() {
         assertDoesNotThrow {
             SharedRendererBinding.verify(
                 bound = null,
-                requested = RendererArgs(distA, fixA, moduleA),
+                requested = RendererArgs(distA, fixA, moduleA, themeA),
             )
         }
     }
 
     @Test
     fun `bound 와 requested 가 동일하면 통과`() {
-        val same = RendererArgs(distA, fixA, moduleA)
+        val same = RendererArgs(distA, fixA, moduleA, themeA)
 
         assertDoesNotThrow {
             SharedRendererBinding.verify(bound = same, requested = same)
@@ -36,8 +41,8 @@ class SharedRendererBindingTest {
 
     @Test
     fun `bound 와 requested 가 다르면 IllegalStateException`() {
-        val bound = RendererArgs(distA, fixA, moduleA)
-        val requested = RendererArgs(distB, fixB, moduleB)
+        val bound = RendererArgs(distA, fixA, moduleA, themeA)
+        val requested = RendererArgs(distB, fixB, moduleB, themeB)
 
         val ex = assertThrows<IllegalStateException> {
             SharedRendererBinding.verify(bound = bound, requested = requested)

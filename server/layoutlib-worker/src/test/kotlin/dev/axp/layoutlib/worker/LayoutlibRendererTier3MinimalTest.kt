@@ -51,6 +51,7 @@ class LayoutlibRendererTier3MinimalTest {
                 distDir = dist.toAbsolutePath().normalize(),
                 fixtureRoot = fixture.toAbsolutePath().normalize(),
                 sampleAppModuleRoot = moduleRoot.toAbsolutePath().normalize(),
+                themeName = SessionConstants.DEFAULT_FIXTURE_THEME,
                 fallback = null,
             )
         }
