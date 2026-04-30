@@ -76,8 +76,8 @@ class LayoutlibResourceBundleTest
     {
         val bundle = build(
             ResourceNamespace.RES_AUTO to listOf(
-                ParsedNsEntry.AttrDef("colorPrimary", ResourceNamespace.RES_AUTO, "first"),
-                ParsedNsEntry.AttrDef("colorPrimary", ResourceNamespace.RES_AUTO, "second"),
+                ParsedNsEntry.AttrDef("colorPrimary", ResourceNamespace.RES_AUTO, emptyMap(), emptyMap(), "first"),
+                ParsedNsEntry.AttrDef("colorPrimary", ResourceNamespace.RES_AUTO, emptyMap(), emptyMap(), "second"),
             ),
         )
         // attr 은 1 개만 등록 (first-wins)

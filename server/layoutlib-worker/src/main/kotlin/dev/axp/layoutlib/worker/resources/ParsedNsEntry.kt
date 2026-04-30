@@ -30,11 +30,21 @@ internal sealed class ParsedNsEntry
 
     /**
      * `<attr name="X" format="Y" />` 선언 (namespace tagged).
-     * (W3D1 AttrDef 와 동일하게 top-level / declare-styleable 자식 모두 수집.)
+     * W3D1 AttrDef 와 동일하게 top-level / declare-styleable 자식 모두 수집.
+     *
+     * W3D4-γ T14: `<enum>/<flag>` 자식 값 테이블 (name → integer) 도 함께 보존.
+     * BridgeTypedArray.resolveEnumAttribute 가 RES_AUTO path 에서 AttrResourceValueImpl
+     * .getAttributeValues() 로 이 테이블을 조회. framework path 는 별도 Bridge.sEnumValueMap
+     * 경로 (T15 가 처리, 동일 데이터 소스).
+     *
+     * enumValues / flagValues 둘 다 Map<String, Int> (insertion order 보존). 한 attr 가
+     * enum + flag 동시 보유는 framework attrs.xml census 0 건 — 한 쪽이 비면 명시 emptyMap().
      */
     data class AttrDef(
         val name: String,
         override val namespace: ResourceNamespace,
+        val enumValues: Map<String, Int>,
+        val flagValues: Map<String, Int>,
         override val sourcePackage: String? = null,
     ) : ParsedNsEntry()
 

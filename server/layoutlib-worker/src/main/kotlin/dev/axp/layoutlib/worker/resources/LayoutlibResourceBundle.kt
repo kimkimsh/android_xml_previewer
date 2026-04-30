@@ -39,8 +39,23 @@ internal class LayoutlibResourceBundle private constructor(
         return null
     }
 
-    fun getResource(ref: ResourceReference): ResourceValue? =
-        byNs[ref.namespace]?.byType?.get(ref.resourceType)?.get(ref.name)
+    /**
+     * W3D4-γ T14 (round 4 Codex Q5 KILL POINT fix): RES_AUTO/ANDROID 의 ATTR ref 는
+     * `byType[ATTR]` 가 아닌 `attrs` map 에서 lookup (AttrDef 가 attrs 에만 등록됨 — NsBucket
+     * 의 byType ↔ attrs 분리 정합). BridgeTypedArray.resolveEnumAttribute 의 path B 와
+     * BridgeXmlPullAttributes.getAttributeIntValue 의 project supplier 가 모두 RenderResources
+     * 의 (un)resolvedResource 를 거쳐 본 메서드에 도달 — instanceof AttrResourceValue cast 를
+     * 위해 AttrResourceValueImpl 인스턴스 자체가 반환되어야 함.
+     */
+    fun getResource(ref: ResourceReference): ResourceValue?
+    {
+        val bucket = byNs[ref.namespace] ?: return null
+        if (ref.resourceType == ResourceType.ATTR)
+        {
+            return bucket.attrs[ref.name]
+        }
+        return bucket.byType[ref.resourceType]?.get(ref.name)
+    }
 
     /**
      * W3D4-β T12: color state list (`<selector>` XML) 의 raw body lookup.
@@ -107,9 +122,23 @@ internal class LayoutlibResourceBundle private constructor(
                     if (!attrsMut.containsKey(e.name))
                     {
                         val ref = ResourceReference(ns, ResourceType.ATTR, e.name)
-                        attrsMut[e.name] = AttrResourceValueImpl(ref, null)
+                        val attr = AttrResourceValueImpl(ref, null)
+                        // W3D4-γ T14: <enum>/<flag> 자식 값 테이블을 AttrResourceValueImpl 에 주입.
+                        // BridgeTypedArray.resolveEnumAttribute 가 RES_AUTO attr 변환 시
+                        // getAttributeValues().get("vertical") 등으로 조회. value 는 boxed Integer
+                        // (Kotlin Int auto-box).
+                        for ((enumName, enumValue) in e.enumValues)
+                        {
+                            attr.addValue(enumName, enumValue, null)
+                        }
+                        for ((flagName, flagValue) in e.flagValues)
+                        {
+                            attr.addValue(flagName, flagValue, null)
+                        }
+                        attrsMut[e.name] = attr
                     }
-                    // first-wins — 두 번째는 silent (W3D1 정책). 진단 원하면 별도 로그.
+                    // first-wins — 두 번째 등록은 silent (W3D1 정책 + round 4 empirical: 41 AAR
+                    // 안 nonempty-vs-nonempty conflict 0건, 첫 nonempty 가 항상 보존됨).
                 }
                 is ParsedNsEntry.StyleDef -> styleDefs += e
                 is ParsedNsEntry.ColorStateList ->

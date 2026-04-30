@@ -95,6 +95,10 @@ internal object NamespaceAwareValueParser
                         TAG_ATTR ->
                         {
                             val name = reader.getAttributeValue(null, ATTR_NAME) ?: ""
+                            // W3D4-γ T14: <enum>/<flag> 자식 수집 — END_ELEMENT 까지 소비.
+                            // skipElement 는 child 정보 추출 후 불필요 (parseAttrChildren 가 동일 종료).
+                            // 자식 없는 self-closing (`<attr name="X"/>`) 도 즉시 매칭 END_ELEMENT.
+                            val attrChildren = parseAttrChildren(reader)
                             // T8 fix: cross-NS attr ref (e.g., `<attr name="android:visible" />`) 는
                             // local def 가 아니라 다른 namespace 의 attr 참조 → emit 하면 ResourceReference
                             // ctor 가 'Qualified name is not allowed' AssertionError 를 throw. aapt2 도
@@ -102,11 +106,14 @@ internal object NamespaceAwareValueParser
                             // ':' 포함 모든 name 을 skip (`app:`, `androidx:` 등 향후 변형도 동일 시맨틱).
                             if (name.isNotEmpty() && !name.contains(NS_NAME_SEPARATOR_CHAR) && seenAttrNames.add(name))
                             {
-                                entries += ParsedNsEntry.AttrDef(name, namespace, sourcePackage)
+                                entries += ParsedNsEntry.AttrDef(
+                                    name,
+                                    namespace,
+                                    attrChildren.first,
+                                    attrChildren.second,
+                                    sourcePackage,
+                                )
                             }
-                            // top-level <attr> 가 자식 (enum/flag) 가질 수 있음 → depth-aware skip.
-                            // 자식 없는 self-closing (`<attr name="X"/>`) 도 skipElement 가 즉시 종료.
-                            skipElement(reader)
                         }
                         TAG_DECLARE_STYLEABLE ->
                             handleDeclareStyleable(reader, namespace, sourcePackage, seenAttrNames, entries)
@@ -205,17 +212,24 @@ internal object NamespaceAwareValueParser
             if (event == XMLStreamConstants.START_ELEMENT && reader.localName == TAG_ATTR)
             {
                 val name = reader.getAttributeValue(null, ATTR_NAME) ?: ""
+                // W3D4-γ T14: nested <attr> 도 top-level 과 동일한 child capture 정책.
+                // declare-styleable 안 <attr> 가 enum/flag 정의하는 경우는 적지만 framework / 일부
+                // AAR 에서 발생 — 일관성 위해 동일 처리.
+                val attrChildren = parseAttrChildren(reader)
                 // T8 fix: declare-styleable 안 cross-NS attr ref (e.g., `<attr name="android:visible" />`)
                 // 는 local def 가 아니라 그 styleable 이 framework attr 을 포함한다는 declaration —
                 // 새 attr 이 생성되지 않음. real Material/AppCompat AAR 에 매우 흔함 (수백 건 / dist).
                 // top-level 분기와 동일 정책으로 ':' 포함 name 은 skip.
                 if (name.isNotEmpty() && !name.contains(NS_NAME_SEPARATOR_CHAR) && seen.add(name))
                 {
-                    entries += ParsedNsEntry.AttrDef(name, namespace, sourcePackage)
+                    entries += ParsedNsEntry.AttrDef(
+                        name,
+                        namespace,
+                        attrChildren.first,
+                        attrChildren.second,
+                        sourcePackage,
+                    )
                 }
-                // attr 는 enum/flag 자식을 가질 수 있음 — 자식 element 가 있을 경우 skipElement 가
-                // depth-aware 로 종료까지 소비. 없으면 즉시 END_ELEMENT 만나서 0 으로 종료.
-                skipElement(reader)
             }
             else if (event == XMLStreamConstants.START_ELEMENT)
             {
@@ -227,6 +241,73 @@ internal object NamespaceAwareValueParser
                 break
             }
         }
+    }
+
+    /**
+     * W3D4-γ T14: `<attr>` 자식 `<enum>/<flag>` 값 테이블 수집 (depth-aware).
+     * 호출 시점: reader 가 `<attr>` 의 START_ELEMENT 위치. helper 는 매칭 END_ELEMENT 까지
+     * 소비 — skipElement 와 동일 종료 의미론 + 직속 enum/flag 만 추출.
+     *
+     * value 는 십진 또는 십육진 literal (framework attrs.xml 기준 — 십육진 약 60% 비중,
+     * 32-bit unsigned mask 도 존재). round 4 reconcile (Codex Q2): `Long.decode(...).toInt()`
+     * 로 통일 파싱 — `0` (decimal), `0x30` (hex), `0x80000000` (Int.MIN_VALUE), `0xffffffff` (-1),
+     * `-1` (음수 십진). parse 실패 시 silently skip (broken AAR resilience).
+     *
+     * 동시 보유 (enum + flag) 는 framework census 0 건 — 보수적으로 두 map 분리, mutual exclusion
+     * 강제는 안 함 (결과 map 둘 다 emit, 호출자가 의미 결정).
+     *
+     * Pair 의 first = enums, second = flags.
+     */
+    private fun parseAttrChildren(reader: XMLStreamReader): Pair<Map<String, Int>, Map<String, Int>>
+    {
+        val enums = LinkedHashMap<String, Int>()
+        val flags = LinkedHashMap<String, Int>()
+        var depth = 1
+        while (reader.hasNext() && depth > 0)
+        {
+            when (reader.next())
+            {
+                XMLStreamConstants.START_ELEMENT ->
+                {
+                    depth++
+                    if (depth == 2)
+                    {
+                        val tag = reader.localName
+                        if (tag == TAG_ENUM || tag == TAG_FLAG)
+                        {
+                            val childName = reader.getAttributeValue(null, ATTR_NAME)
+                            val rawValue = reader.getAttributeValue(null, ATTR_VALUE)
+                            if (childName != null && rawValue != null)
+                            {
+                                val parsed = parseAttrValueLiteral(rawValue)
+                                if (parsed != null)
+                                {
+                                    if (tag == TAG_ENUM) enums[childName] = parsed else flags[childName] = parsed
+                                }
+                            }
+                        }
+                    }
+                }
+                XMLStreamConstants.END_ELEMENT -> depth--
+            }
+        }
+        return enums to flags
+    }
+
+    /**
+     * W3D4-γ T14 (round 4 Codex Q2): `<enum value="..."/>` / `<flag value="..."/>` literal 파싱.
+     * `Long.decode` 가 십진/십육진/팔진 모두 처리 + 32-bit unsigned hex (`0x80000000`,
+     * `0xffffffff`) 도 cover (Long → Int narrow 후 signed 32-bit 결과). Integer.decode 는
+     * `0x80000000` 을 NumberFormatException — framework attrs.xml 의 mask flag 누락.
+     * 예외 시 null (broken AAR resilience).
+     */
+    private fun parseAttrValueLiteral(raw: String): Int? = try
+    {
+        java.lang.Long.decode(raw.trim()).toInt()
+    }
+    catch (e: NumberFormatException)
+    {
+        null
     }
 
     /**
@@ -293,10 +374,13 @@ internal object NamespaceAwareValueParser
     private const val TAG_ATTR = "attr"
     private const val TAG_ITEM = "item"
     private const val TAG_DECLARE_STYLEABLE = "declare-styleable"
+    private const val TAG_ENUM = "enum"
+    private const val TAG_FLAG = "flag"
 
     private const val ATTR_NAME = "name"
     private const val ATTR_PARENT = "parent"
     private const val ATTR_TYPE = "type"
+    private const val ATTR_VALUE = "value"
 
     /**
      * T8 fix: cross-namespace ref separator in attr name (e.g., `android:visible`, `app:foo`).
