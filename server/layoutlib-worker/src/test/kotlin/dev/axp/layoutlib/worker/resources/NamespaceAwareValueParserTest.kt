@@ -116,6 +116,34 @@ class NamespaceAwareValueParserTest
         assertEquals("4dp", e.value)
     }
 
+    @Test
+    fun `multi-element top-level (real Material3 패턴) 모두 파싱`()
+    {
+        // W3D4 T2 second-fix: depth-counter bug regression detect.
+        // handleSimpleValue/handleStyle/handleDeclareStyleable 가 자체 END_ELEMENT 까지 consume 후
+        // 종료 → outer loop 의 depth-- 가 fire 안 됨 → 두 번째 sibling 부터 silently dropped.
+        // T3/T4 의 real Material3 values.xml (수백 sibling) 회귀 방지용.
+        val xml = tmp("""<resources>
+            <dimen name="d1">1dp</dimen>
+            <dimen name="d2">2dp</dimen>
+            <color name="c1">#fff</color>
+            <style name="S1" parent="P1"><item name="i1">v1</item></style>
+            <style name="S2" parent="P2"><item name="i2">v2</item></style>
+            <attr name="a1"/>
+            <declare-styleable name="X"><attr name="a2"/></declare-styleable>
+            <item type="dimen" name="d3">3dp</item>
+        </resources>""")
+        val entries = NamespaceAwareValueParser.parse(xml, ResourceNamespace.RES_AUTO, "com.foo")
+        val simples = entries.filterIsInstance<ParsedNsEntry.SimpleValue>().associateBy { it.name }
+        val styles = entries.filterIsInstance<ParsedNsEntry.StyleDef>().associateBy { it.name }
+        val attrs = entries.filterIsInstance<ParsedNsEntry.AttrDef>().map { it.name }.toSet()
+
+        assertEquals(setOf("d1", "d2", "c1", "d3"), simples.keys)
+        assertEquals(setOf("S1", "S2"), styles.keys)
+        assertEquals(setOf("a1", "a2"), attrs)
+        assertEquals(8, entries.size, "총 4 simple + 2 style + 2 attr = 8")
+    }
+
     private fun tmp(content: String): Path
     {
         val f = Files.createTempFile("vals", ".xml")

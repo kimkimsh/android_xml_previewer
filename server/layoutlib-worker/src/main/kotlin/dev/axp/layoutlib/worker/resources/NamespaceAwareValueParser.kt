@@ -13,8 +13,14 @@ import javax.xml.stream.XMLStreamReader
  * declare-styleable nested attr first-wins (W3D1 F1 정책 보존 — top-level 이 우선).
  *
  * W3D4 T2 follow-up (W3D1 패턴 inherit): handleStyle / handleDeclareStyleable 의 unknown
- * START_ELEMENT 는 skipElement helper 로 depth-aware skip. parseInternal 의 depth==2 분기에
+ * START_ELEMENT 는 skipElement helper 로 depth-aware skip. parseInternal 의 top-level 분기에
  * top-level <item type="X" name="Y">Z</item> case 추가 (Material3 AAR 흔한 패턴).
+ *
+ * W3D4 T2 second-fix: parseInternal 이 outer depth counter 로 top-level 을 식별했었으나,
+ * handleSimpleValue/handleStyle/handleDeclareStyleable 가 자체 END_ELEMENT 까지 consume → outer
+ * loop 의 depth-- 가 fire 안 됨 → 두 번째 sibling 부터 silently dropped (real Material3 회귀).
+ * 해결: W3D1 FrameworkValueParser 의 state-machine 패턴 차용 — root <resources> scan 후 direct
+ * children 만 dispatch, root END_TAG match 로 종료. depth counter 제거.
  */
 internal object NamespaceAwareValueParser
 {
@@ -52,50 +58,70 @@ internal object NamespaceAwareValueParser
     {
         val entries = mutableListOf<ParsedNsEntry>()
         val seenAttrNames = HashSet<String>()
-        var depth = 0
+
+        // <resources> 까지 scan (W3D1 FrameworkValueParser 패턴 차용).
+        var event = if (reader.hasNext()) reader.next() else return entries
+        while (event != XMLStreamConstants.START_ELEMENT && reader.hasNext())
+        {
+            event = reader.next()
+        }
+        if (event != XMLStreamConstants.START_ELEMENT) return entries
+        if (reader.localName != TAG_RESOURCES)
+        {
+            throw IllegalStateException("root element 는 <$TAG_RESOURCES> 여야 함: ${reader.localName}")
+        }
+
+        // <resources> direct children 순회 — root END_TAG match 로 종료.
+        // depth counter 를 쓰지 않는 이유: handleSimpleValue/handleStyle/handleDeclareStyleable 가
+        // 자체 END_ELEMENT 까지 consume → outer 가 본인 depth-- 를 못 보면 두 번째 sibling 부터 dropped.
         while (reader.hasNext())
         {
-            val event = reader.next()
+            event = reader.next()
             when (event)
             {
+                XMLStreamConstants.END_DOCUMENT -> return entries
+                XMLStreamConstants.END_ELEMENT ->
+                {
+                    if (reader.localName == TAG_RESOURCES) return entries
+                }
                 XMLStreamConstants.START_ELEMENT ->
                 {
-                    depth++
-                    if (depth == 2)
+                    when (reader.localName)
                     {
-                        when (reader.localName)
+                        TAG_DIMEN, TAG_INTEGER, TAG_BOOL, TAG_COLOR, TAG_STRING, TAG_FRACTION ->
+                            handleSimpleValue(reader, namespace, sourcePackage)?.let { entries += it }
+                        TAG_STYLE ->
+                            handleStyle(reader, namespace, sourcePackage)?.let { entries += it }
+                        TAG_ATTR ->
                         {
-                            TAG_DIMEN, TAG_INTEGER, TAG_BOOL, TAG_COLOR, TAG_STRING, TAG_FRACTION ->
-                                handleSimpleValue(reader, namespace, sourcePackage)?.let { entries += it }
-                            TAG_STYLE ->
-                                handleStyle(reader, namespace, sourcePackage)?.let { entries += it }
-                            TAG_ATTR ->
+                            val name = reader.getAttributeValue(null, ATTR_NAME) ?: ""
+                            if (name.isNotEmpty() && seenAttrNames.add(name))
                             {
-                                val name = reader.getAttributeValue(null, ATTR_NAME) ?: ""
-                                if (name.isNotEmpty() && seenAttrNames.add(name))
-                                {
-                                    entries += ParsedNsEntry.AttrDef(name, namespace, sourcePackage)
-                                }
+                                entries += ParsedNsEntry.AttrDef(name, namespace, sourcePackage)
                             }
-                            TAG_DECLARE_STYLEABLE ->
-                                handleDeclareStyleable(reader, namespace, sourcePackage, seenAttrNames, entries)
-                            TAG_ITEM ->
+                            // top-level <attr> 가 자식 (enum/flag) 가질 수 있음 → depth-aware skip.
+                            // 자식 없는 self-closing (`<attr name="X"/>`) 도 skipElement 가 즉시 종료.
+                            skipElement(reader)
+                        }
+                        TAG_DECLARE_STYLEABLE ->
+                            handleDeclareStyleable(reader, namespace, sourcePackage, seenAttrNames, entries)
+                        TAG_ITEM ->
+                        {
+                            // W3D1 패턴 inherit: top-level <item type="X" name="Y">Z</item>
+                            // (Material3 AAR 흔한 패턴, e.g. <item type="dimen" name="design_appbar_elevation">4dp</item>)
+                            val typeAttr = reader.getAttributeValue(null, ATTR_TYPE)
+                            val resType = typeAttr?.let { ResourceType.fromXmlValue(it) }
+                            val name = reader.getAttributeValue(null, ATTR_NAME) ?: ""
+                            val value = reader.elementText ?: ""
+                            if (resType != null && name.isNotEmpty())
                             {
-                                // W3D1 패턴 inherit: top-level <item type="X" name="Y">Z</item>
-                                // (Material3 AAR 흔한 패턴, e.g. <item type="dimen" name="design_appbar_elevation">4dp</item>)
-                                val typeAttr = reader.getAttributeValue(null, ATTR_TYPE)
-                                val resType = typeAttr?.let { ResourceType.fromXmlValue(it) }
-                                val name = reader.getAttributeValue(null, ATTR_NAME) ?: ""
-                                val value = reader.elementText ?: ""
-                                if (resType != null && name.isNotEmpty())
-                                {
-                                    entries += ParsedNsEntry.SimpleValue(resType, name, value, namespace, sourcePackage)
-                                }
+                                entries += ParsedNsEntry.SimpleValue(resType, name, value, namespace, sourcePackage)
                             }
                         }
+                        else -> skipElement(reader)  // unknown top-level (e.g. <public>, <eat-comment>) skip
                     }
                 }
-                XMLStreamConstants.END_ELEMENT -> depth--
+                else -> { /* text / comment / whitespace ignore */ }
             }
         }
         return entries
@@ -207,6 +233,7 @@ internal object NamespaceAwareValueParser
     }
 
     // 태그/속성 이름 상수 — CLAUDE.md zero-magic-strings (W3D1 FrameworkValueParser 패턴 inherit).
+    private const val TAG_RESOURCES = "resources"
     private const val TAG_DIMEN = "dimen"
     private const val TAG_INTEGER = "integer"
     private const val TAG_BOOL = "bool"
