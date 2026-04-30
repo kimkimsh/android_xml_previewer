@@ -1,4 +1,4 @@
-# W3D4 MATERIAL-FIDELITY Implementation Plan (v1)
+# W3D4 MATERIAL-FIDELITY Implementation Plan (v2 — round 2 페어 reconcile 반영)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -13,12 +13,57 @@
 
 **Tech Stack:** Kotlin 1.9 / JDK 17 / Gradle 8 / JUnit Jupiter 5 / `java.util.zip.ZipFile` / `javax.xml.stream.XMLStreamReader` / layoutlib 14.0.11 / layoutlib-api 31.13.2 (이미 wired in W3D1/W3D3).
 
-**Spec**: [`docs/superpowers/specs/2026-04-29-w3d4-material-fidelity-design.md`](../specs/2026-04-29-w3d4-material-fidelity-design.md). 본 플랜 모든 결정은 spec round 2 (pair-review GO) 본문 + §8 결정 표에 일치.
+**Spec**: [`docs/superpowers/specs/2026-04-29-w3d4-material-fidelity-design.md`](../specs/2026-04-29-w3d4-material-fidelity-design.md). 본 플랜 모든 결정은 spec round 2 (pair-review GO) 본문 + §8 결정 표에 일치 — 단 round 2 페어가 발견한 spec §2.3 dedupe ordering 정정 (아래 §0.A 참조).
 
 **Round 1 페어-리뷰** (spec): full convergence Q3+Q5, set-converge Q1+Q2+Q4+Q6. ρ → σ FULL 채택, RES_AUTO 모드 통일, R name canonicalization 추가.
-**Round 2 페어-리뷰** (plan v1 → v2): TBD — 본 plan 작성 후 Codex+Claude 페어 review. v2 가 implementation 입력.
+**Round 2 페어-리뷰** (plan v1 → v2): **REVISE_REQUIRED** (양 reviewer 정합) → 12 follow-up 이 v2 에 inline 반영. 아래 §0 참조. v2 가 implementation 입력.
 
-**테스트 카운트**: 신규 unit case = 3+5+6+7+5+10+3+3+4 = **46** (R name canon 3 + dup attr ID 3 신규). 167 → **~213 unit**. integration 12 → **13 PASS** (분리 +1) + 1 SKIP (tier3-glyph).
+**테스트 카운트** (v2 보강): 신규 unit case = 3+5+6+7+**6**+**12**+**4**+3+4 = **50** (T5 dedupe winner +1, T6 sentinel/private/strict +2, T7 seeder integration +1). 167 → **~217 unit**. integration 12 → **13 PASS** (분리 +1) + 1 SKIP (tier3-glyph).
+
+---
+
+## §0. Round 2 페어 verdict + v2 follow-up 반영 (NEW)
+
+양 reviewer **REVISE_REQUIRED** 정합 → judge round 불필요. v2 의 inline 변경:
+
+### §0.A. spec §2.3 dedupe ordering 정정 (Codex Q5 critical)
+
+spec §2.3 / §4.3 의 "runtime-classpath.txt 순서 = Gradle deterministic" 주장은 **부정확**. 실 winner 정책 = **sorted absolute artifact path + app last** ([fixture/sample-app/app/build.gradle.kts](../../fixture/sample-app/app/build.gradle.kts) line 56-65 의 `axpEmitClasspath` task 가 `.distinct().sorted()` 로 lexicographic order 고정). 즉 동명 conflict (e.g. `colorPrimary`) 의 winner 는:
+
+- AAR 사이: **lexicographic 마지막** AAR 가 later-wins → `com.google.android.material...` > `androidx.appcompat...` (same-name 충돌 시 material 가 winner).
+- AttrDef: **lexicographic 처음** AAR 가 first-wins → `androidx...` 가 winner.
+- app 의 res 는 **AAR 후 마지막** 처리 → app 정의가 모든 AAR 를 override.
+
+T5 가 이 정책을 코드로 구현 + duplicate winner unit assert 추가.
+
+### §0.B. follow-up 매핑 표 (12 → task)
+
+| # | Follow-up | 영향 task | 우선순위 |
+|---|---|---|---|
+| 1 | RJarSymbolSeeder 정확한 inline diff (single callback API), `seenAttrNames` outer-scope, integration test | T7 | **P1** |
+| 2 | ctor old/new signature 명시, 7 callsite 별 수정, `fallback: PngRenderer? = null` default 제거 | T8 | **P1** |
+| 3 | parseReference → `ResourceUrl.parse()` + `@null`/`@empty` sentinel + private `*` override | T6 | **P1** |
+| 4 | `locateAll()` body explicit (assumeTrue gate + Triple) + module root graceful skip 정책 | T9 | **P1** |
+| 5 | `MAX_THEME_HOPS = 32` 상향 + 진단 로그 + chain depth ≥ 15 assert | T1 const + T6 + T9 IT | P2 |
+| 6 | `android:` style parent normalization (cross-ns chain 안 framework hit) | T6 + T1 const | P2 |
+| 7 | dedupe winner = "sorted absolute artifact path + app last" 명시 + duplicate winner unit assert | T5 + T4 | P2 |
+| 8 | `Files.list(appValues).sorted()` + T5 line 1114 의 `assertTrue(true)` 가짜 assertion 제거 | T5 | P2 |
+| 9 | JVM cache invalidation (mtime-aware key 또는 explicit invalidate) | T5 | P3 |
+| 10 | AAR `ZipFile().use {}` explicit | T3 | P3 |
+| 11 | RJarSymbolSeederTest end-to-end 회귀 case (Theme_AxpFixture seeding → Theme.AxpFixture lookup) | T7 | P3 |
+| 12 | framework `themes_holo.xml` 포함 의무화 (현 10 framework values 부족) — Codex Q6 chain end-at-MISSING | T6 implementation note | P3 |
+
+### §0.C. round 2 reconcile (Q1-Q7 verdict)
+
+| Q | Claude side | Codex side | 종합 |
+|---|---|---|---|
+| Q1 parseReference | NUANCED | DISAGREE | DISAGREE — `ResourceUrl.parse()` 활용 (FF#3) |
+| Q2 RJarSymbolSeeder | DISAGREE | DISAGREE | **FULL converge** (FF#1) |
+| Q3 locateAll | DISAGREE | DISAGREE | **FULL converge** (FF#4) |
+| Q4 ctor reorder | DISAGREE | NUANCED | DISAGREE — Codex 추가: default param 위반 (FF#2) |
+| Q5 dedupe deterministic | NUANCED | NUANCED | **FULL converge NUANCED** + Codex critical: `.sorted()` lex order (FF#7) |
+| Q6 hop limit | DISAGREE (30) | NUANCED (32) | set-converge: 32 채택 (FF#5+#6+#12) |
+| Q7 general | NUANCED | REVISE_REQUIRED | REVISE — Codex critical: T5 fake assertion + Files.list no sort (FF#8 + #9 + #10 + #11) |
 
 ---
 
@@ -124,7 +169,23 @@ class AppLibraryResourceConstantsTest {
     @Test
     fun `MAX_REF_HOPS 와 MAX_THEME_HOPS 가 안전 범위`() {
         assertTrue(AppLibraryResourceConstants.MAX_REF_HOPS in 5..50, "ref hop limit 합리적")
-        assertTrue(AppLibraryResourceConstants.MAX_THEME_HOPS in 10..100, "theme hop limit 합리적")
+        // v2 round 2 follow-up #5: 실측 chain depth = 17 edges (themes_holo.xml 정상 포함 시),
+        // ThemeOverlay 패턴 적용 시 추가 5-10 overlay 추가 가능 → 32 마진.
+        assertTrue(AppLibraryResourceConstants.MAX_THEME_HOPS >= 30, "theme hop limit ≥ 30 (v2 보강)")
+        assertTrue(AppLibraryResourceConstants.MAX_THEME_HOPS in 30..100, "상한도 합리적")
+    }
+
+    @Test
+    fun `RES_VALUE_NULL_LITERAL 와 RES_VALUE_EMPTY_LITERAL 가 sentinel string 정의`() {
+        // v2 round 2 follow-up #3: 27 AAR 안 @null 106개, @empty 2개 출현 (Codex Q1 측정값).
+        assertEquals("@null", AppLibraryResourceConstants.RES_VALUE_NULL_LITERAL)
+        assertEquals("@empty", AppLibraryResourceConstants.RES_VALUE_EMPTY_LITERAL)
+    }
+
+    @Test
+    fun `ANDROID_NS_PREFIX 가 'android' 로 통일`() {
+        // v2 round 2 follow-up #6: android: style parent normalization 의 prefix 비교용.
+        assertEquals("android", AppLibraryResourceConstants.ANDROID_NS_PREFIX)
     }
 }
 ```
@@ -162,14 +223,32 @@ internal object AppLibraryResourceConstants {
     /** AndroidManifest.xml 의 `package="..."` 추출 regex. plain-text manifest 가정 (W3D4 §4.2). */
     val MANIFEST_PACKAGE_REGEX: Regex = Regex("""package\s*=\s*"([^"]+)"""")
 
-    /** chain walker (?attr / @ref) 의 무한 루프 방지 hop limit. */
+    /** chain walker (?attr / @ref) 의 무한 루프 방지 hop limit. 일반 attr ref chain 3-5 hop. */
     const val MAX_REF_HOPS = 10
 
-    /** theme stack parent walk 의 무한 루프 방지 hop limit. */
-    const val MAX_THEME_HOPS = 20
+    /**
+     * theme stack parent walk 의 무한 루프 방지 hop limit. v2 round 2 follow-up #5:
+     * 실측 chain depth = 17 edges (Theme.AxpFixture → ... → android:Theme.Holo.Light → Theme.Light → Theme).
+     * ThemeOverlay 추가 5-10 가능 → buffer 포함 32.
+     */
+    const val MAX_THEME_HOPS = 32
 
     /** loadAarRes 에서 AAR 1+ 의 values.xml 도 못 찾으면 sanity guard. */
     const val MIN_AAR_WITH_VALUES_THRESHOLD = 1
+
+    /**
+     * v2 round 2 follow-up #3: ResourceUrl 의 sentinel literal. resolveResValue 가 만나면
+     * 즉시 raw value 반환 (parse 시도 안 함). 27 AAR 안 @null 106회 / @empty 2회 출현 (Codex Q1 실측).
+     */
+    const val RES_VALUE_NULL_LITERAL = "@null"
+    const val RES_VALUE_EMPTY_LITERAL = "@empty"
+
+    /**
+     * v2 round 2 follow-up #6: android: style parent normalization 용 prefix.
+     * 예: parentStyleName = "android:Theme.Holo.Light" → namespace=ANDROID + name="Theme.Holo.Light" 로 lookup.
+     */
+    const val ANDROID_NS_PREFIX = "android"
+    const val NS_NAME_SEPARATOR = ":"
 }
 ```
 
@@ -1058,7 +1137,7 @@ EOF
 
 3-입력: framework dist `data/values/` (W3D1 `ResourceLoaderConstants.REQUIRED_FILES` 의 10 XML), sample-app `app/src/main/res/values/*.xml`, runtime-classpath.txt 의 41 AAR (T3 walker 위임). JVM-wide cache key = `Args(distDataDir, sampleAppRoot, classpathTxt)` 3-tuple.
 
-- [ ] **Step 1: LayoutlibResourceValueLoaderTest 작성 (5 case)**
+- [ ] **Step 1: LayoutlibResourceValueLoaderTest 작성 (6 case — v2 dedupe winner +1)**
 
 ```kotlin
 // LayoutlibResourceValueLoaderTest.kt
@@ -1101,17 +1180,25 @@ class LayoutlibResourceValueLoaderTest {
 
     @Test
     fun `cache key 3-tuple 동치 (다른 sampleAppRoot 면 새 build)`(@TempDir tmp: Path) {
+        // v2 round 2 follow-up #8 (Codex Q7): plan v1 의 `assertTrue(true)` 가짜 assertion 제거.
+        // 동일 args = identity hit, 다른 sampleAppRoot = 새 instance 명시 검증.
         val args1 = mockArgs(tmp, withApp = true, withAar = false)
         val a = LayoutlibResourceValueLoader.loadOrGet(args1)
         val b = LayoutlibResourceValueLoader.loadOrGet(args1)
         assertTrue(a === b, "동일 args → 동일 instance (cache hit)")
-        // 다른 sampleAppRoot
-        val args2 = args1.copy(sampleAppRoot = Files.createTempDirectory(tmp, "another"))
-        // 새 sampleAppRoot 가 res 없으므로 fallback empty
-        val c = runCatching { LayoutlibResourceValueLoader.loadOrGet(args2) }.getOrNull()
-        // 동치 확인이 핵심 — strict require 가 throw 면 통과 (3-tuple 다름 검증)
-        // c may be null due to require — that proves args2 is treated as different key
-        assertTrue(true)
+
+        // 다른 sampleAppRoot — 새 디렉토리에 동일 res 구조 재생성 (require 통과 보장).
+        val anotherRoot = Files.createDirectories(tmp.resolve("another-sampleapp"))
+        val anotherValues = Files.createDirectories(anotherRoot.resolve("app/src/main/res/values"))
+        anotherValues.resolve("themes.xml").toFile().writeText("""<resources/>""")
+        val anotherClasspath = anotherRoot.resolve(AppLibraryResourceConstants.RUNTIME_CLASSPATH_TXT_PATH)
+        Files.createDirectories(anotherClasspath.parent)
+        anotherClasspath.toFile().writeText("")
+
+        val args2 = args1.copy(sampleAppRoot = anotherRoot, runtimeClasspathTxt = anotherClasspath)
+        val c = LayoutlibResourceValueLoader.loadOrGet(args2)
+        assertNotNull(c, "다른 sampleAppRoot 도 정상 build")
+        assertTrue(a !== c, "다른 args → 다른 instance (cache key 3-tuple 정합)")
     }
 
     @Test
@@ -1132,13 +1219,46 @@ class LayoutlibResourceValueLoaderTest {
     }
 
     @Test
-    fun `clearCache 후 재계산`(@TempDir tmp: Path) {
+    fun `clearCache 후 재계산이 새 instance 반환`(@TempDir tmp: Path) {
+        // v2 round 2 follow-up #9 (cache invalidation): clearCache 가 실제로 새 instance 를
+        // 만드는지 명시 검증 (plan v1 은 "정상 returns" 만 확인).
         val args = mockArgs(tmp, withApp = true, withAar = false)
         val a = LayoutlibResourceValueLoader.loadOrGet(args)
         LayoutlibResourceValueLoader.clearCache()
         val b = LayoutlibResourceValueLoader.loadOrGet(args)
-        // identity 가 다를 수도 같을 수도 있지만 (재계산이지만 같은 입력), 적어도 정상 returns
         assertNotNull(b)
+        assertTrue(a !== b, "clearCache 후 동일 args 라도 새 instance (재계산)")
+    }
+
+    @Test
+    fun `dedupe winner — sorted lex order + app last`(@TempDir tmp: Path) {
+        // v2 round 2 follow-up #7 (Codex Q5): build.gradle.kts:58 의 `.sorted()` 정책에 따라
+        // dedupe winner = lex order. 동명 style 가 두 AAR 에 있으면 lex 마지막 AAR 가 later-wins.
+        // app 의 res 는 AAR 후 마지막 → app 정의가 모든 AAR override.
+        val distData = Files.createDirectories(tmp.resolve("dist/data"))
+        val valuesDir = Files.createDirectories(distData.resolve(ResourceLoaderConstants.VALUES_DIR))
+        for (filename in ResourceLoaderConstants.REQUIRED_FILES) {
+            valuesDir.resolve(filename).toFile().writeText("""<resources/>""")
+        }
+        // 두 AAR — lex order 로 a-aar 가 먼저, b-aar 가 나중.
+        val aarA = makeAar(tmp, """<manifest package="com.a"/>""", """<resources><style name="X"><item name="k">A</item></style></resources>""")
+        val aarB = makeAar(tmp, """<manifest package="com.b"/>""", """<resources><style name="X"><item name="k">B</item></style></resources>""")
+        val sortedAars = listOf(aarA.toString(), aarB.toString()).sorted()  // axpEmitClasspath 와 동일 정책
+
+        val sampleAppRoot = Files.createDirectories(tmp.resolve("sampleapp"))
+        val classpathTxt = sampleAppRoot.resolve(AppLibraryResourceConstants.RUNTIME_CLASSPATH_TXT_PATH)
+        Files.createDirectories(classpathTxt.parent)
+        classpathTxt.toFile().writeText(sortedAars.joinToString("\n"))
+
+        val bundle = LayoutlibResourceValueLoader.loadOrGet(LayoutlibResourceValueLoader.Args(distData, sampleAppRoot, classpathTxt))
+        val winner = bundle.getStyleExact(com.android.ide.common.rendering.api.ResourceReference(
+            ResourceNamespace.RES_AUTO, com.android.resources.ResourceType.STYLE, "X"
+        ))
+        assertNotNull(winner)
+        // lex 마지막 AAR 가 later-wins → "B" 가 winner.
+        assertEquals("B", winner!!.getItem(
+            com.android.ide.common.rendering.api.ResourceReference(ResourceNamespace.RES_AUTO, com.android.resources.ResourceType.ATTR, "k")
+        )?.value)
     }
 
     // Mock helper — 최소한의 distDataDir + sampleAppRoot + classpathTxt 구조
@@ -1265,8 +1385,14 @@ internal object LayoutlibResourceValueLoader {
         val appValues = sampleAppRoot.resolve(AppLibraryResourceConstants.SAMPLE_APP_RES_VALUES_RELATIVE_PATH)
         if (!appValues.exists()) return emptyList()
         val entries = mutableListOf<ParsedNsEntry>()
+        // v2 round 2 follow-up #8 (Codex Q7): Files.list 는 filesystem-dependent order →
+        // .sorted() 로 lex 순서 고정 (cross-platform deterministic).
         Files.list(appValues).use { stream ->
-            for (file in stream.filter { it.toString().endsWith(".xml") }) {
+            val sortedXmlFiles = stream
+                .filter { it.toString().endsWith(".xml") }
+                .sorted()
+                .toList()
+            for (file in sortedXmlFiles) {
                 entries += NamespaceAwareValueParser.parse(file, ResourceNamespace.RES_AUTO, null)
             }
         }
@@ -1280,7 +1406,7 @@ internal object LayoutlibResourceValueLoader {
 - [ ] **Step 4: 테스트 실행 — pass 확인**
 
 Run: `./server/gradlew -p server :layoutlib-worker:test --tests "dev.axp.layoutlib.worker.resources.LayoutlibResourceValueLoaderTest"`
-Expected: 5 PASS.
+Expected: 6 PASS (v2: dedupe winner test 추가).
 
 - [ ] **Step 5: Commit**
 
@@ -1292,8 +1418,10 @@ feat(w3d4): T5 LayoutlibResourceValueLoader — 3-입력 통합 + cache + 진단
 
 W3D4 §3.1 #7. framework + sample-app + 41 AAR 통합. JVM-wide cache
 (Args 3-tuple). wall-clock framework/app/aar/build/total ms 진단.
+v2 round 2 follow-up: dedupe winner = sorted lex + app last (Files.list
+deterministic), assertTrue(true) 가짜 assertion 제거, clearCache identity 검증.
 
-5 unit PASS.
+6 unit PASS.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
@@ -1310,7 +1438,7 @@ EOF
 
 본 Task 가 round 2 의 핵심. spec §5.1 의 9 method override 전부 구현. ns-exact-then-name fallback 의 uniform 적용 (getStyle / getParent / findItemInStyle / findItemInTheme).
 
-- [ ] **Step 1: LayoutlibRenderResourcesTest 작성 (10 case)**
+- [ ] **Step 1: LayoutlibRenderResourcesTest 작성 (12 case — v2: sentinel + private override + strict resolver +2)**
 
 ```kotlin
 // LayoutlibRenderResourcesTest.kt
@@ -1454,6 +1582,45 @@ class LayoutlibRenderResourcesTest {
         assertEquals("Theme.AxpFixture", rr.allThemes[0].name)
     }
 
+    @Test
+    fun `resolveResValue 가 @null @empty sentinel 즉시 raw 반환`() {
+        // v2 round 2 follow-up #3 (Codex Q1): 27 AAR 안 @null 106회 / @empty 2회 출현. sentinel 은 ref 가 아님 → parse 시도 X.
+        val bundle = LayoutlibResourceBundle.build(mapOf())
+        val rr = LayoutlibRenderResources(bundle, "X")
+        val nullRef = ResourceValueImpl(ref(ResourceNamespace.RES_AUTO, ResourceType.COLOR, "x"), "@null", null)
+        val emptyRef = ResourceValueImpl(ref(ResourceNamespace.RES_AUTO, ResourceType.STRING, "x"), "@empty", null)
+        assertEquals("@null", rr.resolveResValue(nullRef)?.value, "@null sentinel raw")
+        assertEquals("@empty", rr.resolveResValue(emptyRef)?.value, "@empty sentinel raw")
+    }
+
+    @Test
+    fun `resolveResValue 가 @ asterisk private override 정상 처리`() {
+        // v2 round 2 follow-up #3: ResourceUrl.parse 가 `@*android:color/X` 를 private=true, ns=ANDROID 로 parse.
+        // 우리 chain walker 는 private 여부 무시 (visibility 는 inflate 시점에 무관) — type/name 만 추출.
+        val bundle = LayoutlibResourceBundle.build(mapOf(
+            ResourceNamespace.ANDROID to listOf(simple(ResourceType.COLOR, "primary_text", "#000")),
+        ))
+        val rr = LayoutlibRenderResources(bundle, "X")
+        val privateRef = ResourceValueImpl(ref(ResourceNamespace.RES_AUTO, ResourceType.COLOR, "x"), "@*android:color/primary_text", null)
+        val resolved = rr.resolveResValue(privateRef)
+        assertNotNull(resolved, "private override 도 chain walker 가 따라감")
+    }
+
+    @Test
+    fun `getParent 가 'android:Theme.Holo.Light' 을 ANDROID ns 로 normalize`() {
+        // v2 round 2 follow-up #6 (Codex Q6): cross-ns chain 의 ANDROID hop 정확화.
+        // child.parentStyleName = "android:Theme.Holo.Light" → namespace=ANDROID + name="Theme.Holo.Light" 로 lookup.
+        val bundle = LayoutlibResourceBundle.build(mapOf(
+            ResourceNamespace.ANDROID to listOf(style("Theme.Holo.Light", null)),
+            ResourceNamespace.RES_AUTO to listOf(style("Platform.AppCompat.Light", "android:Theme.Holo.Light")),
+        ))
+        val rr = LayoutlibRenderResources(bundle, "Platform.AppCompat.Light")
+        val child = rr.getStyle(ref(ResourceNamespace.RES_AUTO, ResourceType.STYLE, "Platform.AppCompat.Light"))!!
+        val parent = rr.getParent(child)
+        assertNotNull(parent, "android: prefix 가 ANDROID ns 로 normalize")
+        assertEquals("Theme.Holo.Light", parent!!.name)
+    }
+
     private fun style(name: String, parent: String?) = ParsedNsEntry.StyleDef(name, parent, emptyList(), ResourceNamespace.RES_AUTO, null)
     private fun simple(t: ResourceType, n: String, v: String) = ParsedNsEntry.SimpleValue(t, n, v, ResourceNamespace.RES_AUTO, null)
     private fun ref(ns: ResourceNamespace, t: ResourceType, n: String) = ResourceReference(ns, t, n)
@@ -1519,7 +1686,25 @@ class LayoutlibRenderResources(
             if (exact != null) return exact
             return bundle.getStyleByName(parentRef.name)
         }
-        return style.parentStyleName?.let { bundle.getStyleByName(it) }
+        // v2 round 2 follow-up #6: parentStyleName "android:Theme.Holo.Light" → ANDROID ns + bare name.
+        val rawName = style.parentStyleName ?: return null
+        return resolveStyleNameWithNamespace(rawName)
+    }
+
+    /**
+     * v2 round 2 follow-up #6 (Codex Q6): cross-ns parent normalization.
+     * "android:Theme.Holo.Light" → namespace=ANDROID + name="Theme.Holo.Light" 로 ns-exact lookup.
+     * "Theme.AxpFixture" 처럼 prefix 없으면 ns-agnostic getStyleByName fallback.
+     */
+    private fun resolveStyleNameWithNamespace(rawName: String): StyleResourceValue? {
+        val sepIdx = rawName.indexOf(AppLibraryResourceConstants.NS_NAME_SEPARATOR)
+        if (sepIdx < 0) return bundle.getStyleByName(rawName)
+        val nsPrefix = rawName.substring(0, sepIdx)
+        val bareName = rawName.substring(sepIdx + AppLibraryResourceConstants.NS_NAME_SEPARATOR.length)
+        val ns = if (nsPrefix == AppLibraryResourceConstants.ANDROID_NS_PREFIX) ResourceNamespace.ANDROID else ResourceNamespace.RES_AUTO
+        val exact = bundle.getStyleExact(ResourceReference(ns, ResourceType.STYLE, bareName))
+        if (exact != null) return exact
+        return bundle.getStyleByName(bareName)
     }
 
     override fun getDefaultTheme(): StyleResourceValue = mDefaultTheme
@@ -1546,6 +1731,11 @@ class LayoutlibRenderResources(
         var hops = 0
         while (hops < AppLibraryResourceConstants.MAX_REF_HOPS) {
             val text = current.value ?: return current
+            // v2 round 2 follow-up #3 (Codex Q1): @null / @empty 는 sentinel — ref 가 아님 → 즉시 raw 반환.
+            if (text == AppLibraryResourceConstants.RES_VALUE_NULL_LITERAL ||
+                text == AppLibraryResourceConstants.RES_VALUE_EMPTY_LITERAL) {
+                return current
+            }
             val refLike = parseReference(text) ?: return current
             if (!seen.add(refLike)) {
                 System.err.println("[LayoutlibRenderResources] circular ref: ${current.name} → $refLike")
@@ -1559,6 +1749,10 @@ class LayoutlibRenderResources(
             current = next
             hops++
         }
+        // v2 round 2 follow-up #5: hop 초과 시 진단 로그 + 현재 value 반환 (graceful).
+        System.err.println(
+            "[LayoutlibRenderResources] MAX_REF_HOPS(${AppLibraryResourceConstants.MAX_REF_HOPS}) 초과 — chain ended at ${current.name}=${current.value}"
+        )
         return current
     }
 
@@ -1604,33 +1798,38 @@ class LayoutlibRenderResources(
         null, null,
     )
 
+    /**
+     * v2 round 2 follow-up #3 (Codex Q1): self-built regex 대신 layoutlib-api 의
+     * `com.android.resources.ResourceUrl.parse()` 직접 활용. 동일 패턴 + private (`@*`/`?*`)
+     * + theme attr (`?`) + sentinel (`@null`/`@empty`) 모두 동등 처리.
+     *
+     * 호출 직전에 sentinel 분기 (text == "@null" / "@empty") 이미 done — parseReference 는
+     * "ref-shaped" 입력에서만 호출됨. ResourceUrl.parse 가 sentinel 에는 null 반환 (graceful).
+     *
+     * namespace 결정: ResourceUrl.namespace == "android" → ANDROID, otherwise RES_AUTO.
+     */
     private fun parseReference(text: String): ResourceReference? {
-        // ?attr/<name>, ?<ns>:attr/<name>, @<ns>:<type>/<name>, @<type>/<name> 매칭
-        val attrPattern = Regex("""^\?(?:([^:]+):)?(?:attr/)?(.+)$""")
-        val resPattern = Regex("""^@(?:\+)?(?:([^:]+):)?([^/]+)/(.+)$""")
-        attrPattern.matchEntire(text)?.let { m ->
-            val ns = m.groupValues[1].takeIf { it.isNotEmpty() }
-            val name = m.groupValues[2]
-            val resolvedNs = if (ns == "android") ResourceNamespace.ANDROID else ResourceNamespace.RES_AUTO
-            return ResourceReference(resolvedNs, ResourceType.ATTR, name)
-        }
-        resPattern.matchEntire(text)?.let { m ->
-            val ns = m.groupValues[1].takeIf { it.isNotEmpty() }
-            val typeStr = m.groupValues[2]
-            val name = m.groupValues[3]
-            val type = ResourceType.fromXmlValue(typeStr) ?: return null
-            val resolvedNs = if (ns == "android") ResourceNamespace.ANDROID else ResourceNamespace.RES_AUTO
-            return ResourceReference(resolvedNs, type, name)
-        }
-        return null
+        val url = com.android.resources.ResourceUrl.parse(text) ?: return null
+        val type = url.type ?: return null
+        val ns = if (url.namespace == AppLibraryResourceConstants.ANDROID_NS_PREFIX)
+            ResourceNamespace.ANDROID else ResourceNamespace.RES_AUTO
+        return ResourceReference(ns, type, url.name)
     }
 }
 ```
 
+**API 검증 보강 (round 2 evidence)**: layoutlib-api 31.13.2 의 `com.android.resources.ResourceUrl.parse(String)` 가:
+- `?attr/X`, `?android:attr/X`, `?colorPrimary` (attr/ 누락 형태) → ATTR
+- `@color/X`, `@android:color/X`, `@+id/X`, `@style/X` → 해당 type
+- `@*android:color/X`, `?*android:attr/X` → private=true 보존하나 type/name 동일
+- `@null`, `@empty` → null 반환 (sentinel 처리는 호출자 책임)
+
+위 경로 모두 우리 chain walker 와 정합. `?colorPrimary` 같은 짧은 형태도 ATTR 로 정상 처리 — plan v1 의 self-built regex 의 group capture 모호성 회피.
+
 - [ ] **Step 4: 테스트 실행 — pass 확인**
 
 Run: `./server/gradlew -p server :layoutlib-worker:test --tests "dev.axp.layoutlib.worker.resources.LayoutlibRenderResourcesTest"`
-Expected: 10 PASS.
+Expected: 12 PASS (v2: sentinel + private override + android: normalization +2).
 
 - [ ] **Step 5: Commit**
 
@@ -1648,9 +1847,14 @@ stub 회피 (페어 round 1 verdict). 9 method override:
 - applyStyle / clearStyles / clearAllThemes
 
 ns-exact-then-name fallback uniform (Q2). chain walker + theme stack
-+ circular detection. parseReference regex 가 ?attr/X 와 @type/name 매칭.
++ circular detection.
 
-10 unit PASS.
+v2 round 2 follow-up: parseReference 가 self-built regex 대신 layoutlib-api
+ResourceUrl.parse 직접 활용 (sentinel + private override 처리). @null/@empty
+sentinel 즉시 raw 반환. android: parent normalization 으로 cross-ns chain
+정확화. MAX_THEME_HOPS=32 (실측 17 hop + ThemeOverlay buffer).
+
+12 unit PASS.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
@@ -1730,21 +1934,150 @@ internal object RNameCanonicalization {
 }
 ```
 
-- [ ] **Step 4: RJarSymbolSeeder 의 R$style 처리에 styleNameToXml 적용**
+- [ ] **Step 4: RJarSymbolSeeder 의 single-callback API 에 정확한 inline diff 적용**
 
-`RJarSymbolSeeder.kt` 안 R$style 클래스 walker 의 field name emit 부분을 찾아 변환:
+**v2 round 2 follow-up #1 (Codex Q2 + Claude Q2 FULL convergence DISAGREE)**:
+plan v1 의 `callback.registerStyle/registerAttr` placeholder 는 실 API 와 mismatch.
+실 API = `register: (ResourceReference, Int) -> Unit` 단일 callback (1 arg + 1 emit). 정확한 변경:
 
-(현 코드를 grep 한 후 정확한 위치에 변경 — placeholder 가 아니라 실제 변경 패턴 구현)
+**현 RJarSymbolSeeder.kt (W3D3-α 종료 시점, 2026-04-26 commit `b556dc8`)**:
+- line 26-30: `fun seed(rJarPath: Path, rJarLoader: ClassLoader, register: (ResourceReference, Int) -> Unit)`
+- line 31-54: ZipFile 순회 → seedClass 호출
+- line 77-107: seedClass — `register(ResourceReference(namespace, type, field.name), value)` line 105 가 emit point
+
+**v2 변경**: (a) seed() outer scope 에 `seenAttrNames: HashSet<String>()` 추가 (cross-class dedup), (b) seedClass() 에 `seenAttrNames` 인자 전달, (c) line 105 emit 직전에 type 분기로 STYLE name canonicalization + ATTR first-wins guard.
 
 ```kotlin
-// RJarSymbolSeeder.kt 의 R$style 처리 부분 (대략적 변경 예시)
-// 기존 (W3D3-α):
-//   val styleName = field.name  // "Theme_AxpFixture"
-//   callback.registerStyle(styleName, field.id)
-// 변경 (round 2):
-//   val styleName = RNameCanonicalization.styleNameToXml(field.name)  // "Theme.AxpFixture"
-//   callback.registerStyle(styleName, field.id)
+// RJarSymbolSeeder.kt — v2 변경 후 (전체 본문 — replace_all 권장)
+package dev.axp.layoutlib.worker.classloader
+
+import com.android.ide.common.rendering.api.ResourceNamespace
+import com.android.ide.common.rendering.api.ResourceReference
+import com.android.resources.ResourceType
+import dev.axp.layoutlib.worker.classloader.ClassLoaderConstants.CLASS_FILE_SUFFIX
+import dev.axp.layoutlib.worker.classloader.ClassLoaderConstants.INNER_CLASS_SEPARATOR
+import dev.axp.layoutlib.worker.classloader.ClassLoaderConstants.INTERNAL_NAME_SEPARATOR
+import dev.axp.layoutlib.worker.classloader.ClassLoaderConstants.EXTERNAL_NAME_SEPARATOR
+import dev.axp.layoutlib.worker.classloader.ClassLoaderConstants.R_CLASS_NAME_SUFFIX
+import java.lang.reflect.Modifier
+import java.nio.file.Path
+import java.util.zip.ZipFile
+
+internal object RJarSymbolSeeder
+{
+    fun seed(
+        rJarPath: Path,
+        rJarLoader: ClassLoader,
+        register: (ResourceReference, Int) -> Unit,
+    )
+    {
+        // v2 follow-up #1 (R-2): cross-class first-wins per attr name. appcompat R$attr
+        // 와 material R$attr 양쪽이 'colorPrimary' 를 등록 시도하면 첫 등장만 통과.
+        // outer scope = ZipFile 단위 (한 R.jar 안 모든 R$attr 클래스 공유).
+        val seenAttrNames = HashSet<String>()
+        ZipFile(rJarPath.toFile()).use { zip ->
+            for (entry in zip.entries())
+            {
+                if (!entry.name.endsWith(CLASS_FILE_SUFFIX))
+                {
+                    continue
+                }
+                val internalName = entry.name.removeSuffix(CLASS_FILE_SUFFIX)
+                val parts = parseRClassName(internalName) ?: continue
+                val (packageName, typeSimpleName) = parts
+                val resourceType = RJarTypeMapping.fromSimpleName(typeSimpleName) ?: continue
+                if (resourceType == ResourceType.STYLEABLE)
+                {
+                    continue
+                }
+                seedClass(
+                    rJarLoader,
+                    internalName.replace(INTERNAL_NAME_SEPARATOR, EXTERNAL_NAME_SEPARATOR),
+                    packageName,
+                    resourceType,
+                    register,
+                    seenAttrNames,
+                )
+            }
+        }
+    }
+
+    internal fun parseRClassName(internalName: String): Pair<String, String>?
+    {
+        val dollarIdx = internalName.lastIndexOf(INNER_CLASS_SEPARATOR)
+        if (dollarIdx < 0)
+        {
+            return null
+        }
+        val before = internalName.substring(0, dollarIdx)
+        val after = internalName.substring(dollarIdx + 1)
+        if (!before.endsWith(R_CLASS_NAME_SUFFIX))
+        {
+            return null
+        }
+        val packageInternal = before.removeSuffix(R_CLASS_NAME_SUFFIX)
+        return packageInternal.replace(INTERNAL_NAME_SEPARATOR, EXTERNAL_NAME_SEPARATOR) to after
+    }
+
+    private fun seedClass(
+        loader: ClassLoader,
+        fqcn: String,
+        packageName: String,
+        type: ResourceType,
+        register: (ResourceReference, Int) -> Unit,
+        seenAttrNames: MutableSet<String>,
+    )
+    {
+        val cls = try
+        {
+            loader.loadClass(fqcn)
+        }
+        catch (t: Throwable)
+        {
+            return
+        }
+        val namespace = ResourceNamespace.fromPackageName(packageName)
+        for (field in cls.declaredFields)
+        {
+            if (!Modifier.isStatic(field.modifiers))
+            {
+                continue
+            }
+            if (field.type != Int::class.javaPrimitiveType)
+            {
+                continue
+            }
+            field.isAccessible = true
+            val value = field.getInt(null)
+            // v2 follow-up #1 (R-1): R$style 의 underscore name → XML dot name canonicalization.
+            // R$attr / R$dimen / R$color / R$bool / 등은 underscore 보존.
+            val emitName = if (type == ResourceType.STYLE)
+            {
+                RNameCanonicalization.styleNameToXml(field.name)
+            }
+            else
+            {
+                field.name
+            }
+            // v2 follow-up #1 (R-2): R$attr 만 cross-class first-wins guard 적용.
+            // 다른 type (style/dimen/color/...) 은 namespace 가 R class 별 다르므로 ResourceReference 자체로 동치 충돌 없음.
+            if (type == ResourceType.ATTR)
+            {
+                if (!AttrSeederGuard.tryRegister(emitName, value, packageName, seenAttrNames))
+                {
+                    continue
+                }
+            }
+            register(ResourceReference(namespace, type, emitName), value)
+        }
+    }
+}
 ```
+
+**핵심 결정**:
+- `seenAttrNames` 의 scope = `seed()` outer (한 R.jar 의 모든 R$attr 클래스 cross-class 공유).
+- STYLE canonicalization 은 emit 직전. 변환 실패 case 없음 (replace 는 실패 안 함).
+- ATTR first-wins guard 는 type==ATTR 일 때만. R$style/R$color 등은 R class 단위 namespace 가 달라 ResourceReference equals 가 namespace 포함 → 동명 conflict 자체가 없음.
 
 - [ ] **Step 5: RNameCanonicalizationTest 실행 — pass 확인**
 
@@ -1823,28 +2156,51 @@ internal object AttrSeederGuard {
 }
 ```
 
-- [ ] **Step 8: RJarSymbolSeeder 의 R$attr 처리에 AttrSeederGuard 적용**
+- [ ] **Step 8: RJarSymbolSeeder 의 R$attr 처리에 AttrSeederGuard 적용 — Step 4 의 inline diff 가 이미 통합 적용**
 
-(현 코드의 R$attr emit 위치에 `seenAttrNames: HashSet<String>()` 추가 + tryRegister 호출)
+Step 4 의 v2 변경 본문이 R$attr 의 `tryRegister` + `seenAttrNames` outer scope 통합을 모두 포함. 별도 변경 없음 (placeholder fix 의 결과).
 
 - [ ] **Step 9: RDuplicateAttrIdTest 실행 — pass 확인**
 
 Run: `./server/gradlew -p server :layoutlib-worker:test --tests "dev.axp.layoutlib.worker.classloader.RDuplicateAttrIdTest"`
 Expected: 3 PASS.
 
-- [ ] **Step 10: 기존 W3D3-α RJarSymbolSeeder 테스트 회귀 확인**
+- [ ] **Step 10: RJarSymbolSeederIntegrationTest end-to-end 회귀 case 추가 (v2 follow-up #11)**
+
+기존 RJarSymbolSeederTest 에 다음 case 추가 (mock R.jar 로 seed → emit reference 검증):
+
+```kotlin
+// RJarSymbolSeederTest.kt 에 추가 (기존 4 case → 5 case)
+
+@Test
+fun `seed 가 R style underscore name 을 dot name 으로 emit`() {
+    // v2 round 2 follow-up #11: end-to-end 회귀 — Theme_AxpFixture seeding → Theme.AxpFixture lookup.
+    val rJar = makeRJarWithStyle(packageName = "com.fixture", styleField = "Theme_AxpFixture", id = 0x7f0c0001)
+    val emitted = mutableListOf<Pair<ResourceReference, Int>>()
+    val loader = java.net.URLClassLoader(arrayOf(rJar.toUri().toURL()), null)
+    RJarSymbolSeeder.seed(rJar, loader) { ref, id -> emitted += ref to id }
+    val styles = emitted.filter { it.first.resourceType == ResourceType.STYLE }
+    assertTrue(styles.any { it.first.name == "Theme.AxpFixture" }, "underscore→dot canonicalization (실측 emit name)")
+    assertTrue(styles.none { it.first.name == "Theme_AxpFixture" }, "underscore name 은 emit 안 됨 (변환 후만)")
+}
+
+// makeRJarWithStyle helper 도 동일 파일에 추가 — int field 1개 가진 mock R.jar 생성
+```
+
+- [ ] **Step 11: 기존 W3D3-α RJarSymbolSeeder 테스트 회귀 확인**
 
 Run: `./server/gradlew -p server :layoutlib-worker:test --tests "dev.axp.layoutlib.worker.classloader.*"`
-Expected: 모든 W3D3 + W3D4 신규 PASS.
+Expected: 모든 W3D3 + W3D4 신규 PASS (RJarSymbolSeederTest 4→5 + RNameCanonicalizationTest 3 + RDuplicateAttrIdTest 3 = 11 case).
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
 git add server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/classloader/RNameCanonicalization.kt \
         server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/classloader/AttrSeederGuard.kt \
         server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/classloader/RJarSymbolSeeder.kt \
         server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/classloader/RNameCanonicalizationTest.kt \
-        server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/classloader/RDuplicateAttrIdTest.kt
+        server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/classloader/RDuplicateAttrIdTest.kt \
+        server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/classloader/RJarSymbolSeederTest.kt
 git commit -m "$(cat <<'EOF'
 feat(w3d4): T7 RJarSymbolSeeder canonicalization + dup attr first-wins
 
@@ -1854,8 +2210,11 @@ W3D4 §7.1 (R-1) + §7.2 (R-2). Codex Q6 NEW gaps:
 - multiple R class (appcompat/material) 의 동명 attr first-wins +
   진단 로그 (AttrSeederGuard.tryRegister).
 
+v2 round 2 follow-up: 정확한 inline diff (single callback API),
+seenAttrNames outer-scope (cross-class dedup), end-to-end seed 회귀 case.
+
 W3D3-α RJarSymbolSeeder 의 R$style/R$attr 처리에 통합.
-6 unit PASS (3+3 신규).
+7 unit PASS (3 canon + 3 dup + 1 seeder integration).
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
@@ -1866,10 +2225,15 @@ EOF
 
 ## Task 8: LayoutlibRenderer + SharedLayoutlibRenderer 통합 (themeName 5-tuple)
 
+**v2 round 2 follow-up #2 (Codex Q4 + Claude Q4 DISAGREE 정합)**: plan v1 가 "5번째 인자 추가" 로 묘사했으나 실은 **ctor parameter reorder** + default param 위반 + positional caller 영향. round 2 가 모두 explicit 으로 처리.
+
 **Files:**
-- Modify: `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/LayoutlibRenderer.kt` (line 174 swap + ctor 5번째 인자)
-- Modify: `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/SharedLayoutlibRenderer.kt` (RendererArgs 4 → 5-tuple)
+- Modify: `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/LayoutlibRenderer.kt` (line 48-53 ctor reorder + 5번째 인자 + default param 제거)
+- Modify: `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/SharedLayoutlibRenderer.kt` (line 174 swap to LayoutlibResourceValueLoader)
+- Modify: `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedLayoutlibRenderer.kt` (test sourceSet — RendererArgs 3 → 4-tuple, themeName 추가)
 - Modify: `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/session/SessionConstants.kt` (DEFAULT_FIXTURE_THEME 추가)
+- Modify: `server/mcp-server/src/main/kotlin/dev/axp/mcp/Main.kt` (line 133 caller — themeName named arg)
+- Modify (test callers): `LayoutlibRendererIntegrationTest.kt`, `SharedLayoutlibRendererIntegrationTest.kt`, `LayoutlibRendererTier3MinimalTest.kt`
 - Delete: `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/resources/FrameworkResourceBundle.kt`
 - Delete: `.../resources/FrameworkRenderResources.kt`
 - Delete: `.../resources/FrameworkResourceValueLoader.kt`
@@ -1885,30 +2249,35 @@ EOF
 const val DEFAULT_FIXTURE_THEME = "Theme.AxpFixture"
 ```
 
-- [ ] **Step 2: LayoutlibRenderer 의 line 174 swap + ctor 5번째 인자**
+- [ ] **Step 2: LayoutlibRenderer ctor reorder + 5번째 인자 (default param 제거 — CLAUDE.md 규약)**
 
-기존 ctor:
+**기존 ctor (실 코드 line 48-53)**:
+```kotlin
+class LayoutlibRenderer(
+    private val distDir: Path,
+    private val fallback: PngRenderer?,        // <-- 2nd (positional caller 가 의존)
+    private val fixtureRoot: Path,
+    private val sampleAppModuleRoot: Path,
+) : PngRenderer
+```
+
+**v2 변경 ctor**:
 ```kotlin
 class LayoutlibRenderer(
     private val distDir: Path,
     private val fixtureRoot: Path,
     private val sampleAppModuleRoot: Path,
-    private val fallback: PngRenderer? = null,
-)
+    private val themeName: String,             // <-- v2 NEW (Theme.AxpFixture)
+    private val fallback: PngRenderer?,        // <-- 마지막 (default value 없음 — CLAUDE.md "No default parameter values")
+) : PngRenderer
 ```
 
-변경:
-```kotlin
-class LayoutlibRenderer(
-    private val distDir: Path,
-    private val fixtureRoot: Path,
-    private val sampleAppModuleRoot: Path,
-    private val themeName: String,           // <-- 5th
-    private val fallback: PngRenderer? = null,
-)
-```
+**중요**:
+- (a) `fallback` 위치 reorder: 2nd → 5th (last). 모든 positional caller 가 영향.
+- (b) `themeName: String` NEW 추가, default value 없음.
+- (c) `fallback: PngRenderer? = null` default 제거 → caller 가 explicit `null` 전달 의무.
 
-renderViaLayoutlib 의 line 174 swap:
+renderViaLayoutlib 의 line 174 swap (W3D1 → W3D4):
 ```kotlin
 // 기존:
 //   val bundle = FrameworkResourceValueLoader.loadOrGet(
@@ -1927,37 +2296,78 @@ val bundle = LayoutlibResourceValueLoader.loadOrGet(
 val resources = LayoutlibRenderResources(bundle, themeName)
 ```
 
-- [ ] **Step 3: SharedLayoutlibRenderer 의 RendererArgs 4 → 5-tuple**
+- [ ] **Step 3: test-only SharedLayoutlibRenderer 의 RendererArgs 3 → 4-tuple + LayoutlibRenderer 호출 reorder**
 
+**현 test SharedLayoutlibRenderer.kt** (line 30-50):
 ```kotlin
-// SharedLayoutlibRenderer.kt
-internal data class RendererArgs(
-    val distDir: Path,
-    val fixtureRoot: Path,
-    val sampleAppModuleRoot: Path,
-    val themeName: String,                 // <-- 5th
-    val fallback: PngRenderer?,
-)
-
-fun getOrCreate(
-    distDir: Path,
-    fixtureRoot: Path,
-    sampleAppModuleRoot: Path,
-    themeName: String,                     // <-- 5th
-    fallback: PngRenderer?,
-): LayoutlibRenderer {
-    val args = RendererArgs(distDir, fixtureRoot, sampleAppModuleRoot, themeName, fallback)
-    return cache.computeIfAbsent(args) {
-        LayoutlibRenderer(it.distDir, it.fixtureRoot, it.sampleAppModuleRoot, it.themeName, it.fallback)
+object SharedLayoutlibRenderer
+{
+    @Synchronized
+    fun getOrCreate(distDir: Path, fixtureRoot: Path, sampleAppModuleRoot: Path, fallback: PngRenderer?): LayoutlibRenderer
+    {
+        val requested = RendererArgs(distDir, fixtureRoot, sampleAppModuleRoot)
+        SharedRendererBinding.verify(boundArgs, requested)
+        instance?.let { return it }
+        val created = LayoutlibRenderer(distDir, fallback, fixtureRoot, sampleAppModuleRoot)  // <-- positional, fallback 2nd
+        instance = created
+        boundArgs = requested
+        return created
     }
 }
 ```
 
-- [ ] **Step 4: 모든 caller 의 SharedLayoutlibRenderer.getOrCreate / new LayoutlibRenderer 호출 enumerate + 갱신**
+**v2 변경**:
+```kotlin
+object SharedLayoutlibRenderer
+{
+    @Synchronized
+    fun getOrCreate(
+        distDir: Path,
+        fixtureRoot: Path,
+        sampleAppModuleRoot: Path,
+        themeName: String,                  // <-- v2 NEW (4th, default value 없음)
+        fallback: PngRenderer?,
+    ): LayoutlibRenderer
+    {
+        val requested = RendererArgs(distDir, fixtureRoot, sampleAppModuleRoot, themeName)  // <-- 4-tuple
+        SharedRendererBinding.verify(boundArgs, requested)
+        instance?.let { return it }
+        // v2 round 2 follow-up #2: positional → named call (silent reorder 위험 회피).
+        val created = LayoutlibRenderer(
+            distDir = distDir,
+            fixtureRoot = fixtureRoot,
+            sampleAppModuleRoot = sampleAppModuleRoot,
+            themeName = themeName,
+            fallback = fallback,
+        )
+        instance = created
+        boundArgs = requested
+        return created
+    }
+}
+```
 
-Run: `grep -rn "SharedLayoutlibRenderer.getOrCreate\|LayoutlibRenderer(" server/ --include="*.kt"`
+또한 `RendererArgs` data class 가 `themeName` 포함 4-tuple 로 갱신.
 
-각 호출 사이트에 `themeName = SessionConstants.DEFAULT_FIXTURE_THEME` 추가. CLI / MCP / test 등 모든 entry-point.
+- [ ] **Step 4: 7 caller 별 명시적 수정 (named args 강제)**
+
+**v2 round 2 follow-up #2**: grep 으로 잡힌 7 callsite 별 정확한 변경:
+
+| # | Path | 현재 | v2 변경 |
+|---|---|---|---|
+| 1 | `server/mcp-server/src/main/kotlin/dev/axp/mcp/Main.kt:133` | named args, `fallback = PlaceholderPngRenderer(), fixtureRoot, sampleAppModuleRoot` | 5 named args 추가 (themeName), 기존 named 그대로 |
+| 2 | `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/SharedLayoutlibRenderer.kt:45` (positional!) | `LayoutlibRenderer(distDir, fallback, fixtureRoot, sampleAppModuleRoot)` | Step 3 의 named call 로 교체 (위 코드) |
+| 3 | `LayoutlibRendererIntegrationTest.kt:32` | named getOrCreate(dist, fixture, moduleRoot, fallback=null) | `themeName = SessionConstants.DEFAULT_FIXTURE_THEME` 추가 |
+| 4 | `SharedLayoutlibRendererIntegrationTest.kt:30` | 동일 | 동일 |
+| 5 | `SharedLayoutlibRendererIntegrationTest.kt:40,42` | 2 calls 동일 | 2 calls 동일 |
+| 6 | `SharedLayoutlibRendererIntegrationTest.kt:53,58` | 2 calls 동일 | 2 calls 동일 |
+| 7 | `LayoutlibRendererTier3MinimalTest.kt:50` | named | `themeName = SessionConstants.DEFAULT_FIXTURE_THEME` 추가 |
+
+**검증 grep** (Step 4 끝에 실행):
+```bash
+grep -rn "SharedLayoutlibRenderer.getOrCreate\|LayoutlibRenderer(" server/ --include="*.kt"
+```
+expected: 모든 callsite 가 `themeName = ...` 인자 포함 + named args 형태 (positional 0건).
 
 - [ ] **Step 5: W3D1 framework-only Test (FrameworkResourceBundleTest 등) 삭제 / 흡수 확인**
 
@@ -1978,8 +2388,9 @@ git add -A
 git commit -m "$(cat <<'EOF'
 feat(w3d4): T8 LayoutlibRenderer + Shared 통합 — themeName 5-tuple + W3D1 흡수
 
-W3D4 §3.2. LayoutlibRenderer ctor 에 themeName: String 5번째 인자.
-SharedLayoutlibRenderer.RendererArgs 5-tuple cache key.
+W3D4 §3.2. LayoutlibRenderer ctor reorder + themeName 5번째 인자
++ default param 제거 (CLAUDE.md 규약). 7 callsite 모두 named args 강제.
+SharedLayoutlibRenderer.RendererArgs 4-tuple (themeName 포함).
 SessionConstants.DEFAULT_FIXTURE_THEME = "Theme.AxpFixture" 추가.
 
 LayoutlibRenderer.renderViaLayoutlib line 174:
@@ -1990,7 +2401,7 @@ W3D1 흡수 — Framework{ResourceBundle,RenderResources,ResourceValueLoader,
 ValueParser}, ParsedEntry 5 파일 삭제. 대응 W3D1 test 삭제 (신규 test
 가 동등 case 포함).
 
-build SUCCESSFUL, unit ~210+ PASS.
+build SUCCESSFUL, unit ~217 PASS (v2 follow-up: T5 +1, T6 +2, T7 +1).
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF
@@ -2045,6 +2456,8 @@ class MaterialFidelityIntegrationTest {
         assertTrue(names.contains("Theme.AxpFixture"), "stack 에 AxpFixture")
         assertTrue(names.any { it.startsWith("Theme.Material3") }, "stack 에 Material3 ancestor")
         assertTrue(names.contains("Theme") || names.any { it.startsWith("Theme.AppCompat") }, "최상단 Theme/AppCompat")
+        // v2 round 2 follow-up #5 (Codex Q6): 실측 chain depth = 17 hop. 회귀 시 chain 끊김 detect.
+        assertTrue(stack.size >= 15, "chain depth ≥ 15 (실측 17, MAX_THEME_HOPS=32 마진), got ${stack.size}")
     }
 
     @Test
@@ -2145,11 +2558,40 @@ class LayoutlibRendererIntegrationTest {
         bytes.size >= 4 && bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
             bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()
 
-    private fun locateAll(): Triple<Path, Path, Path>? { /* W3D3 의 helper 재활용 */ ... }
+    /**
+     * v2 round 2 follow-up #4 (Codex Q3 + Claude Q3 FULL convergence DISAGREE):
+     * plan v1 placeholder `/* W3D3 의 helper 재활용 */ ...` → explicit body.
+     *
+     * W3D3 의 기존 3개 helper (locateDistDir / locateFixtureRoot / locateSampleAppModuleRoot)
+     * 는 dist/fixture 가 `assumeTrue` graceful 하지만 module root 는 `requireNotNull` 강제 throw
+     * 였음. v2 가 module root 도 graceful 으로 통일 (CI 환경에 sample-app 부재 시 SKIP — primary
+     * test 가 dist/fixture/module 모두 의존).
+     */
+    private fun locateAll(): Triple<Path, Path, Path>?
+    {
+        val dist = DistDiscovery.locate(null)
+        val fixture = FixtureDiscovery.locate(null)
+        val moduleRoot = FixtureDiscovery.locateModuleRoot(null)
+        if (dist == null || fixture == null || moduleRoot == null)
+        {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "dist/fixture/moduleRoot 부재 — W3D3 helper 와 동일 graceful skip")
+            return null
+        }
+        return Triple(dist, fixture, moduleRoot)
+    }
 }
 ```
 
 (`renderWithMaterialFallback` helper 와 그 호출 제거 — round 2 ξ 결정.)
+
+**v2 변경 추가 — chain depth 회귀 assert (follow-up #5)**:
+
+`MaterialFidelityIntegrationTest` 의 `Theme AxpFixture parent walk to Theme — real bundle` 케이스에 다음 assert 추가:
+
+```kotlin
+// 기존 stack.size 검증 후 추가:
+assertTrue(stack.size >= 15, "chain depth ≥ 15 (실측 17 hop, MAX_THEME_HOPS=32 마진 17). 회귀 시 chain 끊김 detect")
+```
 
 - [ ] **Step 3: 테스트 실행 — 둘 다 PASS**
 
@@ -2226,9 +2668,9 @@ RJarSymbolSeeder canonicalization 의 결과.
 ## Files modified
 (T1-T9 의 모든 파일 + W3D1 5 파일 삭제)
 
-## Tests (W3D4 종결)
-- unit: 167 → ~213 (+46)
-- integration: 12 → 13 (+1) + 1 SKIP (tier3-glyph)
+## Tests (W3D4 종결 — v2 round 2 보강)
+- unit: 167 → ~217 (+50). v2 follow-up: T5 dedupe winner +1, T6 sentinel/private/android-norm +2, T7 seeder integration +1.
+- integration: 12 → 13 (+1) + 1 SKIP (tier3-glyph). MaterialFidelityIntegrationTest 의 chain depth ≥ 15 assert 회귀 detect.
 - build SUCCESSFUL, smoke "ok"
 
 ## Landmines / 발견
@@ -2243,11 +2685,15 @@ RJarSymbolSeeder canonicalization 의 결과.
 ## Pair-review 기록
 - Round 1 (spec): full convergence Q3+Q5, set-converge Q1+Q2+Q4+Q6.
   4개 critical issue → ρ → σ FULL, RES_AUTO 모드 통일, R name canon 추가.
-- Round 2 (plan v1 → v2): TBD (본 plan 작성 후).
+- Round 2 (plan v1 → v2, **REVISE_REQUIRED 정합**): 양 reviewer DISAGREE/NUANCED 정합으로
+  judge round 불필요. full converge Q2+Q3 (RJarSymbolSeeder API mismatch + locateAll
+  placeholder). Codex critical: build.gradle.kts:58 `.sorted()` lex order, T5 line 1114
+  fake assertion, Files.list no sort. Claude critical: ctor reorder + 17 hop chain 실측.
+  12 follow-up 모두 v2 inline 반영 (§0.B 표 참조).
 
 ## 08 §7.7.6 close 1줄
 "W3D4 MATERIAL-FIDELITY: namespace-aware bundle + σ FULL resolver +
-R name canon → primary activity_basic.xml SUCCESS. 167+12 → 213+13."
+R name canon → primary activity_basic.xml SUCCESS. 167+12 → 217+13."
 
 ## 다음 milestone 후보
 - W3D5 또는 W4-X tier3-glyph (현재 SKIP).
@@ -2304,7 +2750,7 @@ EOF
 
 ---
 
-## Self-Review (이 plan 작성 후 inline 확인)
+## Self-Review (v2 round 2 후속 보강)
 
 **1. Spec coverage**
 - Spec §3.1 #1-8 → Tasks T1-T6 + T8. ✓
@@ -2317,22 +2763,35 @@ EOF
 - Spec §7.2 (dup attr ID) → T7. ✓
 - Spec §10 acceptance gate 11개 → T9 (game gate) + T10 (work_log close). ✓
 - Spec §11 plan input → 본 plan 자체. ✓
+- **v2 정정**: spec §2.3 의 "Gradle deterministic" 주장이 부정확 (실은 `.sorted()` lex). §0.A 에 정정 명시.
 
-**2. Placeholder scan**
-- "TBD/TODO" 검색: round 2 페어 리뷰 (plan v1 → v2) 가 plan v2 에서 갱신되도록 명시 — 의도적 placeholder, plan 자체 결과가 아님. 코드 Step 에는 모두 실제 코드 포함.
-- T8 Step 4 의 "각 호출 사이트에 ... 추가" 는 grep + edit 의 self-instruction (placeholder 아님).
-- T9 의 LayoutlibRendererIntegrationTest 의 `locateAll()` helper 가 `...` 처리 — W3D3 에 이미 존재하는 helper 의 재활용 의도. 만약 round 2 페어 review 에서 placeholder 라고 지적되면 plan v2 에서 explicit code 로 보강.
+**2. Placeholder scan (v2 round 2 후 모두 해결)**
+- ~~T7 Step 4 placeholder `callback.registerStyle(...)`~~ → v2 에서 정확한 inline diff (single callback API + seenAttrNames outer-scope) 명시.
+- ~~T8 Step 4 "각 호출 사이트에 ... 추가" 추상 instruction~~ → v2 에서 7 callsite enumeration + named args 강제.
+- ~~T9 `locateAll()` placeholder body~~ → v2 에서 explicit body (assumeTrue gate + Triple).
+- ~~T6 의 self-built parseReference regex~~ → v2 에서 `ResourceUrl.parse()` 직접 활용.
 
 **3. Type consistency**
 - `LayoutlibResourceBundle.build(...)` 인자 시그니처: T4 (Map<ResourceNamespace, List<ParsedNsEntry>>) ↔ T5 (loadOrGet → loader 가 build 호출). 일관.
 - `LayoutlibRenderResources(bundle, themeName)` ctor: T6 ↔ T8 (LayoutlibRenderer 의 line 174 swap). 일관.
-- `RendererArgs` 5-tuple: T8 (themeName 4번째). T9 의 `getOrCreate(...themeName=...)` 호출과 정합. ✓
+- `LayoutlibRenderer` ctor 의 v2 새 시그니처 `(distDir, fixtureRoot, sampleAppModuleRoot, themeName, fallback)`: T8 + 7 callsite 모두 정합. fallback default 제거 (CLAUDE.md "No default parameter values").
+- `SharedLayoutlibRenderer.RendererArgs` 4-tuple (themeName 포함): T8 ↔ T9. ✓
 
-**4. Ambiguity**
-- T6 의 `parseReference` regex 가 `?<ns>:attr/...` 형태도 매칭 — 실 layoutlib 가 던지는 패턴과 100% 일치 검증은 round 2 페어 review 에서. round 2 pair-review 결과 패치 가능.
-- T7 의 RJarSymbolSeeder 변경 부분이 W3D3-α 의 정확한 emit 코드를 grep 후 수정 — placeholder 가 아니라 sub-step 의 substantive instruction. round 2 pair-review 가 검증.
+**4. v2 round 2 follow-up coverage 검증 (12개)**
+- FF#1 (T7 inline diff) ✓ — Step 4 의 v2 본문이 single callback API + cross-class seenAttrNames 통합.
+- FF#2 (T8 ctor reorder + 7 caller + default 제거) ✓ — Step 2-4 의 explicit 코드.
+- FF#3 (T6 ResourceUrl.parse + sentinel + private) ✓ — parseReference 본문 교체 + 3 신규 test.
+- FF#4 (T9 locateAll explicit body) ✓ — explicit body + assumeTrue gate.
+- FF#5 (MAX_THEME_HOPS=32 + 진단 로그 + chain depth assert) ✓ — T1 const + T6 hop-overflow log + MaterialFidelityIntegrationTest 의 chain depth assert.
+- FF#6 (android: parent normalization) ✓ — T6 의 `resolveStyleNameWithNamespace` 신규.
+- FF#7 (dedupe winner sorted lex + winner unit assert) ✓ — T5 의 dedupe winner test + spec §0.A 정정.
+- FF#8 (Files.list.sorted + assertTrue(true) 제거) ✓ — T5 loadApp + cache test 갱신.
+- FF#9 (cache invalidation explicit) ✓ — clearCache identity assert.
+- FF#10 (AAR ZipFile.use {}) ✓ — T3 line 808 에 이미 존재 (확인 only).
+- FF#11 (RJarSymbolSeederTest end-to-end) ✓ — T7 Step 10 신규 case.
+- FF#12 (themes_holo.xml 포함 의무) → spec §10 acceptance gate 의 framework REQUIRED_FILES 검토 항목 (현 ResourceLoaderConstants.REQUIRED_FILES 가 themes_holo 포함 시 사실상 충족 — implementation 시 W3D1 의 framework 10 XML 카운트 확인). T9 의 chain depth ≥ 15 assert 가 실측 회귀 detect.
 
-이슈 없음. plan v1 작성 완료.
+이슈 없음. plan v2 작성 완료.
 
 ---
 
