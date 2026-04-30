@@ -42,10 +42,20 @@ internal class LayoutlibResourceBundle private constructor(
     fun getResource(ref: ResourceReference): ResourceValue? =
         byNs[ref.namespace]?.byType?.get(ref.resourceType)?.get(ref.name)
 
+    /**
+     * W3D4-β T12: color state list (`<selector>` XML) 의 raw body lookup.
+     * MinimalLayoutlibCallback.getParser 가 Bridge ResourceHelper.getColorStateList 의
+     * input feed 단계에서 호출.
+     */
+    fun getColorStateListXml(ref: ResourceReference): String? =
+        byNs[ref.namespace]?.colorStateLists?.get(ref.name)
+
     /** 진단/테스트 전용. */
     fun namespacesInOrder(): List<ResourceNamespace> = byNs.keys.toList()
     fun styleCountForNamespace(ns: ResourceNamespace): Int = byNs[ns]?.styles?.size ?: 0
     fun attrCountForNamespace(ns: ResourceNamespace): Int = byNs[ns]?.attrs?.size ?: 0
+    fun colorStateListCountForNamespace(ns: ResourceNamespace): Int =
+        byNs[ns]?.colorStateLists?.size ?: 0
 
     companion object
     {
@@ -75,6 +85,7 @@ internal class LayoutlibResourceBundle private constructor(
             val attrsMut = LinkedHashMap<String, AttrResourceValueImpl>()
             val stylesMut = LinkedHashMap<String, StyleResourceValueImpl>()
             val styleDefs = mutableListOf<ParsedNsEntry.StyleDef>()
+            val colorStateListsMut = LinkedHashMap<String, String>()
 
             for (e in entries) when (e)
             {
@@ -101,6 +112,32 @@ internal class LayoutlibResourceBundle private constructor(
                     // first-wins — 두 번째는 silent (W3D1 정책). 진단 원하면 별도 로그.
                 }
                 is ParsedNsEntry.StyleDef -> styleDefs += e
+                is ParsedNsEntry.ColorStateList ->
+                {
+                    // W3D4-β T12: byType[COLOR] 에 placeholder ResourceValue 등록 →
+                    // BridgeContext 의 getResource 단계 통과 보장. value 는 magic placeholder
+                    // (callback.getParser 가 가로챔 — Bridge fallback ParserFactory.create 미도달).
+                    val typeMap = byTypeMut.getOrPut(ResourceType.COLOR) { mutableMapOf() }
+                    if (!typeMap.containsKey(e.name))
+                    {
+                        val ref = ResourceReference(ns, ResourceType.COLOR, e.name)
+                        typeMap[e.name] = ResourceValueImpl(
+                            ref,
+                            AppLibraryResourceConstants.COLOR_STATE_LIST_PLACEHOLDER_VALUE,
+                            null,
+                        )
+                    }
+                    if (colorStateListsMut.containsKey(e.name))
+                    {
+                        System.err.println(
+                            "[LayoutlibResourceBundle] dup color-state-list '${e.name}' ns=${ns.packageName ?: "RES_AUTO"} from ${e.sourcePackage} — first-wins",
+                        )
+                    }
+                    else
+                    {
+                        colorStateListsMut[e.name] = e.rawXml
+                    }
+                }
             }
 
             val allStyleNames: Set<String> = styleDefs.mapTo(HashSet()) { it.name }
@@ -131,6 +168,7 @@ internal class LayoutlibResourceBundle private constructor(
                 byType = byTypeMut.mapValues { it.value.toMap() },
                 styles = stylesMut.toMap(),
                 attrs = attrsMut.toMap(),
+                colorStateLists = colorStateListsMut.toMap(),
             )
         }
     }

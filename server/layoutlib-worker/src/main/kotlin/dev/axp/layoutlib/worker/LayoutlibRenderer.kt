@@ -182,7 +182,13 @@ class LayoutlibRenderer(
         val resources = LayoutlibRenderResources(bundle, themeName)
         val params: SessionParams = SessionParamsFactory.build(
             layoutParser = parser,
-            callback = MinimalLayoutlibCallback({ ensureSampleAppClassLoader() }, ::seedRJarSymbols),
+            // W3D4-β T12: bundle.getColorStateListXml 을 callback 에 wiring →
+            // Bridge ResourceHelper.getColorStateList 가 callback.getParser 로 input feed.
+            callback = MinimalLayoutlibCallback(
+                { ensureSampleAppClassLoader() },
+                ::seedRJarSymbols,
+                { ref -> bundle.getColorStateListXml(ref) },
+            ),
             resources = resources,
         )
 

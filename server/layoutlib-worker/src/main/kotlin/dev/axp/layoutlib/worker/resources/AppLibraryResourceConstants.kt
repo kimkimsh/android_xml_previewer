@@ -14,6 +14,24 @@ internal object AppLibraryResourceConstants
     /** AAR ZIP entry — values.xml. */
     const val AAR_VALUES_XML_PATH = "res/values/values.xml"
 
+    /**
+     * W3D4-β T12: AAR ZIP entry prefix — color state-list XML 디렉토리.
+     * 예: material-1.12.0 의 res/color/m3_highlighted_text.xml. 실측 default `res/color/`
+     * 합계 192 files (material 171 + appcompat 21). qualifier 디렉토리 (color-v31/,
+     * color-night-v8/, color-v23/) 는 W4+ density/locale/night-mode 지원 시 추가.
+     */
+    const val AAR_COLOR_DIR_PREFIX = "res/color/"
+
+    /** color XML 파일 확장자. */
+    const val COLOR_XML_SUFFIX = ".xml"
+
+    /**
+     * W3D4-β T12: color state list ResourceValue 의 placeholder value. callback.getParser
+     * 가 ILayoutPullParser 를 반환하므로 Bridge fallback (ParserFactory.create(value)) 에
+     * 도달하지 않음 — 단지 non-null marker. 진단 시 식별 용이성을 위해 의도된 magic prefix.
+     */
+    const val COLOR_STATE_LIST_PLACEHOLDER_VALUE = "@axp:color-state-list"
+
     /** AAR ZIP entry — AndroidManifest.xml (package 추출용). */
     const val AAR_ANDROID_MANIFEST_PATH = "AndroidManifest.xml"
 

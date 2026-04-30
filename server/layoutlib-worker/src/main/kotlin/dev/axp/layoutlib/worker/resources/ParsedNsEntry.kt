@@ -54,4 +54,16 @@ internal sealed class ParsedNsEntry
         /** `<style>` 내부의 단일 `<item name="...">value</item>`. */
         data class StyleItem(val name: String, val value: String)
     }
+
+    /**
+     * W3D4-β T12: `res/color/<name>.xml` 의 색 state list (`<selector>` root).
+     * rawXml 는 selector body 전체. MinimalLayoutlibCallback.getParser 가 StringReader
+     * 로 wrap 하여 Bridge ResourceHelper.getColorStateList 에 feed.
+     */
+    data class ColorStateList(
+        val name: String,
+        val rawXml: String,
+        override val namespace: ResourceNamespace,
+        override val sourcePackage: String? = null,
+    ) : ParsedNsEntry()
 }

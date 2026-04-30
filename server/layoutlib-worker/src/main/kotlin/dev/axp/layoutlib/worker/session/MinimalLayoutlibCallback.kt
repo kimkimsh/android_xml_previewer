@@ -4,8 +4,10 @@ import com.android.ide.common.rendering.api.ActionBarCallback
 import com.android.ide.common.rendering.api.AdapterBinding
 import com.android.ide.common.rendering.api.ILayoutPullParser
 import com.android.ide.common.rendering.api.LayoutlibCallback
+import com.android.ide.common.rendering.api.ResourceNamespace
 import com.android.ide.common.rendering.api.ResourceReference
 import com.android.ide.common.rendering.api.ResourceValue
+import com.android.resources.ResourceType
 import org.kxml2.io.KXmlParser
 import org.xmlpull.v1.XmlPullParser
 import java.lang.reflect.InvocationTargetException
@@ -32,6 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class MinimalLayoutlibCallback(
     private val viewClassLoaderProvider: () -> ClassLoader,
     private val initializer: ((ResourceReference, Int) -> Unit) -> Unit,
+    private val colorStateListLookup: (ResourceReference) -> String?,
 ) : LayoutlibCallback() {
 
     private val nextId = AtomicInteger(FIRST_ID)
@@ -104,7 +107,28 @@ class MinimalLayoutlibCallback(
 
     override fun hasAndroidXAppCompat(): Boolean = true
 
-    override fun getParser(layoutResource: ResourceValue?): ILayoutPullParser? = null
+    /**
+     * W3D4-β T12: Bridge ResourceHelper.getColorStateList → getXmlBlockParser 가 호출.
+     * RES_AUTO color state list (`res/color/<name>.xml`) 이면 raw selector XML 을
+     * StringReader 로 wrap 하여 ILayoutPullParser 반환. 그 외 (LAYOUT/MENU/DRAWABLE 등)
+     * 은 prior null 동작 보존 — round 3 양쪽 reviewer 가 회귀 없음을 확인.
+     */
+    override fun getParser(layoutResource: ResourceValue?): ILayoutPullParser?
+    {
+        if (layoutResource == null)
+        {
+            return null
+        }
+        if (layoutResource.resourceType != ResourceType.COLOR)
+        {
+            return null
+        }
+        val ns = layoutResource.namespace ?: return null
+        val name = layoutResource.name ?: return null
+        val ref = ResourceReference(ns, ResourceType.COLOR, name)
+        val rawXml = colorStateListLookup(ref) ?: return null
+        return SelectorXmlPullParser.fromString(rawXml)
+    }
 
     override fun getAdapterBinding(cookie: Any?, attributes: Map<String, String>): AdapterBinding? = null
 

@@ -41,7 +41,8 @@ class AarResourceWalkerTest
             assertEquals(null, result, "values 없으면 null 반환")
             val log = errOut.toString()
             assertTrue(log.contains("[AarResourceWalker]"), "진단 prefix")
-            assertTrue(log.contains("res/values/values.xml 없음"))
+            // W3D4-β T12: 메시지가 "res/values/values.xml + res/color/*.xml 모두 없음" 으로 확장됨.
+            assertTrue(log.contains("res/values/values.xml") && log.contains("모두 없음"))
         }
         finally
         {

@@ -22,7 +22,7 @@ class MinimalLayoutlibCallbackLoadViewTest {
     }
 
     private fun newCallback(cl: ClassLoader): MinimalLayoutlibCallback =
-        MinimalLayoutlibCallback({ cl }, { /* no-op */ })
+        MinimalLayoutlibCallback({ cl }, { /* no-op */ }, { null })
 
     @Test
     fun `loadView — provider CL 로 위임 + 정상 instantiate`() {
