@@ -80,5 +80,78 @@ W3D4-β plan v3 (T11/T12/T13) 진행. **Gap A** (Material ThemeEnforcement senti
 - `e83d75d` — feat(w3d4-beta): T11 RJarSymbolSeeder RES_AUTO + per-type id-aware first-wins.
 - `4acb571` — feat(w3d4-beta): T12 color state list walker + parser feed via callback.
 - `10ed4f3` — feat(w3d4-beta): T13 partial — cache-invalidation + W3D4-γ-A escalation.
+- `0ea4f8c` — docs(w3d4-beta): session-log + W3D4-γ handoff (cold-start safe).
+- `4a31771` — docs(w3d4-gamma): plan v3.1 attr enum/flag capture + round 4 pair-review.
+- `3ca8bb5` — feat(w3d4-gamma): T14 AttrDef enum/flag value capture + RES_AUTO ATTR exposure.
+- `1541958` — feat(w3d4-gamma): T15 framework Bridge.init enumValueMap wiring.
 
-총 4 commits, 모두 push 완료.
+총 8 commits (β 4 + γ 4), 모두 push 완료. T16 partial commit (재 `@Disabled` + work_log) 은 본 라인 직후.
+
+---
+
+## W3D4-γ session append (2026-04-30 → 2026-05-01)
+
+### W3D4-γ Outcome
+
+W3D4-β plan v3 의 escalation §5.4 정책에서 도래한 enum/flag capture phase. plan v3.1 작성 → round 4 pair-review (Codex REVISE_REQUIRED 0.93 / Claude GO_WITH_FIXES 0.92, 7 deltas inline) → T14 (RES_AUTO path) + T15 (framework Bridge.init wiring) + T16 (acceptance gate).
+
+**핵심 플랜 수정 (round 4 의 critical Q5)**: Codex 가 Claude 가 놓친 KILL POINT catch — `LayoutlibResourceBundle.getResource(ref)` 이 byType-only 조회로 ATTR ref → null 반환. AttrDef 가 `attrsMut` 별도 등록되어 NsBucket 의 byType ↔ attrs 분리 때문. 이 fix 없이 T14 의 addValue 만으로는 BridgeTypedArray.resolveEnumAttribute 의 instanceof cast 실패 — acceptance gate 닫지 못함.
+
+**T16 측정 결과 (LM-W3D4-β-H 정확 실현)**: γ-A.1 + γ-A.2 가 의도 surface 3 warning ("vertical/center_horizontal/parent is not a valid integer") 모두 닫음 — system-err 발화 부재로 검증. 그러나 새 fail surface (W3D4-δ-A escalation) 발견:
+
+```
+[LayoutlibRenderer] createSession result: status=ERROR_INFLATION
+  msg=This component requires that you specify a valid TextAppearance attribute.
+      Update your app theme to inherit from Theme.MaterialComponents (or a descendant).
+```
+
+상세는 `t16-acceptance-gate-followup.md` 참조.
+
+### W3D4-γ files
+
+#### main src
+- `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/resources/ParsedNsEntry.kt` — AttrDef 에 `enumValues: Map<String, Int>` + `flagValues: Map<String, Int>` 추가, 신규 두 필드는 default 없음 (호출처가 명시 emptyMap).
+- `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/resources/NamespaceAwareValueParser.kt` — `parseAttrChildren` (depth-aware enum/flag child loop) + `parseAttrValueLiteral` (`Long.decode(...).toInt()` 로 32-bit unsigned hex + 음수 cover) helper 추가, top-level + declare-styleable nested `<attr>` branch 모두 갱신, `TAG_ENUM`/`TAG_FLAG`/`ATTR_VALUE` 상수 신규.
+- `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/resources/LayoutlibResourceBundle.kt` — **`getResource(ref)` 에 ATTR special-case 추가 (round 4 Q5 KILL POINT fix)**, buildBucket 의 AttrDef branch 에 `AttrResourceValueImpl.addValue` 호출, `frameworkEnumValueMap()` helper 추가 (byNs[ANDROID].attrs → Bridge.init 형식 export).
+- `server/layoutlib-worker/src/main/kotlin/dev/axp/layoutlib/worker/LayoutlibRenderer.kt` — `loaderArgs()` private helper 추출, `initBridge` 의 빈 enumValueMap 을 `bundle.frameworkEnumValueMap()` 로 교체, `renderViaLayoutlib` 의 inline Args build 도 helper 사용.
+
+#### test src
+- `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/resources/AttrEnumFlagCaptureTest.kt` (신규, 9 cases) — parser child capture 단위.
+- `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/resources/LayoutlibResourceBundleAttrValuesTest.kt` (신규, 5 cases) — bundle addValue + getResource ATTR 회귀 가드.
+- `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/resources/LayoutlibRenderResourcesAttrLookupTest.kt` (신규, 3 cases) — RenderResources 의 getResolvedResource + getUnresolvedResource ATTR 검증 (BridgeTypedArray + BridgeXmlPullAttributes 양쪽 path cover).
+- `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/resources/LayoutlibResourceBundleFrameworkEnumExportTest.kt` (신규, 5 cases) — frameworkEnumValueMap export 검증.
+- `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/resources/LayoutlibResourceBundleTest.kt` — line 79-80 의 AttrDef 3-arg 호출을 5-arg 로 갱신 (round 4 Q6 명시).
+- `server/layoutlib-worker/src/test/kotlin/dev/axp/layoutlib/worker/LayoutlibRendererIntegrationTest.kt` — `tier3 basic primary` `@Disabled` 갱신 (W3D4-δ-A escalation reason).
+
+#### docs
+- `docs/superpowers/plans/2026-04-30-w3d4-gamma-attr-enum-flag.md` (신규) — plan v3.1, round 4 reconcile 의 7 deltas inline.
+- `docs/work_log/2026-04-30_w3d4-beta-plumbing/round4-pair-review.md` (신규) — Codex+Claude round 4 verdict + reconcile.
+- `docs/work_log/2026-04-30_w3d4-beta-plumbing/t16-acceptance-gate-followup.md` (신규) — T14/T15/T16 측정 결과 + W3D4-δ-A escalation 분석.
+
+### W3D4-γ test results
+
+| 지표 | T13 종료 | T14 후 | T15 후 | T16 partial |
+|---|---|---|---|---|
+| layoutlib-worker unit | 172 | 189 (+17) | 194 (+5) | 194 |
+| layoutlib-worker IT (PASS + SKIP) | 14 + 2 SKIP | 14 + 2 SKIP | 14 + 2 SKIP | 14 + 2 SKIP |
+| 모듈 합산 unit | 215 | 232 (+17) | 237 (+5) | 237 |
+| `tier3-basic-primary` warning surface | enum/flag (3 warnings) | (T14 단독) framework path 미해결 | **3 warnings 모두 closed** | TextAppearance sentinel (W3D4-δ-A carry) |
+| cold-start `[LayoutlibResourceValueLoader]` total | (값 동일) | — | 89ms | 85ms |
+
+### W3D4-γ Landmines (carry over from β + 신규)
+
+**β 의 carry over** (모두 본 session 에서 회피 검증, t16-followup §6):
+| LM | 회피 검증 |
+|---|---|
+| LM-W3D4-β-D | 신규 KDoc 모두 backtick 인용 또는 일반 prose ✓ |
+| LM-W3D4-β-E | 신규 test 의 `assertNotNull(...)` 모두 별도 변수 패턴 ✓ |
+| LM-W3D4-β-F | IT 실행 시 `-PincludeTags=integration` 일관 ✓ |
+| LM-W3D4-β-G | round 4 Codex CLI 직접 사용, subagent unzip 없음 ✓ |
+| LM-W3D4-β-H | T16 의 새 fail surface 분류 (TextAppearance sentinel) — δ escalation ✓ |
+
+**γ session 신규**:
+| LM | 내용 | 후속 |
+|---|---|---|
+| LM-W3D4-γ-A | round 4 reviewer (Claude) 가 Q5 의 NsBucket byType ↔ attrs 분리 issue 미발견 — Codex 의 file:line evidence 가 catch. 향후 reviewer prompt 에 "bundle 의 lookup path 를 trace 하라" 명시 권장 | round 5+ pair prompt 갱신 |
+| LM-W3D4-γ-B | `Integer.decode` 가 32-bit unsigned hex (`0x80000000`, `0xffffffff`) 에 NumberFormatException — `Long.decode(...).toInt()` 가 정합. attr literal 파싱 시 framework attrs.xml 의 mask flag 검증 필수 | parseAttrValueLiteral 본 implementation 영구 |
+| LM-W3D4-γ-C | ThemeEnforcement 의 multi-sentinel check — colorPrimary 닫힘 후 TextAppearance 가 다음 layer. Material AAR 안 ThemeEnforcement 의 sentinel surface 가 stepwise 발견 — δ phase 에서 한 번에 census 권장 | W3D4-δ |

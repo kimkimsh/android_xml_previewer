@@ -37,12 +37,16 @@ class LayoutlibRendererIntegrationTest
     }
 
     @org.junit.jupiter.api.Disabled(
-        "W3D4-γ carry: T11 + T12 (W3D4-β) 적용 후 acceptance gate fail 위치가 shift — Gap A/B 모두 closed " +
-            "(walker: 41 AARs, 191 color-state-lists 통합 확인). 새 gap = AttrDef 의 enum/flag 자식 값 미캡처 " +
-            "(`<attr name=\"orientation\" format=\"enum\"><enum name=\"vertical\" value=\"1\"/></attr>` 형태의 enum/flag " +
-            "table 이 ParsedNsEntry.AttrDef + LayoutlibResourceBundle.attrs 에 보존 안 됨). 결과: layoutlib warning — " +
-            "\"vertical\" in attribute \"orientation\" is not a valid integer / \"parent\" in layout_constraintEnd_toEndOf. " +
-            "W3D4-γ A1 (AttrDef enum/flag value capture) fix 후 @Disabled 제거. round 3 plan §5.4 escalation 의 정확한 surface.",
+        "W3D4-δ carry: T14 + T15 (W3D4-γ-A enum/flag capture, both RES_AUTO + framework paths) 적용 후 " +
+            "이전 \"vertical / center_horizontal / parent is not a valid integer\" warning 3건 모두 closed " +
+            "(γ-A.1 framework Bridge.sEnumValueMap + γ-A.2 RES_AUTO AttrResourceValueImpl + LayoutlibResourceBundle.getResource ATTR special-case). " +
+            "그러나 acceptance gate fail surface 가 또 한 layer shift — createSession result: " +
+            "ERROR_INFLATION msg=\"This component requires that you specify a valid TextAppearance attribute. " +
+            "Update your app theme to inherit from Theme.MaterialComponents (or a descendant).\" 발화. " +
+            "Material ThemeEnforcement 가 colorPrimary 외 다른 sentinel attr (TextAppearance 계열) 도 검사 — " +
+            "Theme.AxpFixture parent chain 또는 Material AAR 의 styleable 정의 다음 layer. " +
+            "W3D4-δ (TextAppearance sentinel attr 분석 + ThemeEnforcement 의 multi-sentinel check 대응) 후 @Disabled 제거. " +
+            "plan v3.1 §5.3 escalation 정책 정확히 적중 (LM-W3D4-β-H).",
     )
     @Test
     fun `tier3 basic primary — activity_basic 가 직접 SUCCESS`()
