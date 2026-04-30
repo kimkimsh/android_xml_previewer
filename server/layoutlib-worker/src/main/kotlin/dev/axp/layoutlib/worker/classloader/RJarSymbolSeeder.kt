@@ -25,9 +25,15 @@ import java.util.zip.ZipFile
  *  - R-1 (§7.1): R$style 의 underscore name (Theme_AxpFixture) → XML dot name
  *    (Theme.AxpFixture) canonicalization. T6 LayoutlibRenderResources 의 dot-name
  *    lookup 과 정합. RNameCanonicalization helper 위임.
- *  - R-2 (§7.2): multiple R class (appcompat / material / 등) 의 동명 attr 첫 등장만
- *    register — cross-class first-wins. seenAttrNames 는 ZipFile 단위 outer scope
- *    (한 R.jar 안 모든 R$attr 클래스 공유). AttrSeederGuard 위임.
+ *  - R-2 (§7.2): multiple R class 의 동명 ATTR 첫 등장만 register — cross-class first-wins.
+ *
+ * W3D4-β T11 (round 3 reconcile): namespace 통일 정책 — RJarSymbolSeeder 도
+ * `ResourceNamespace.RES_AUTO` 로 등록. AarResourceWalker:71 의 RES_AUTO 와 정합
+ * (round 2 ξ 결정 일관). 이전의 `fromPackageName(packageName)` 은 callback.byId 의
+ * ResourceReference 와 bundle.byNs 사이에 namespace 불일치를 만들어 Material
+ * ThemeEnforcement.checkAppCompatTheme 가 sentinel attr 을 못 찾는 원인이었다.
+ * cross-class first-wins 도 ATTR-only → 모든 type 으로 일반화 (ResourceTypeFirstWinsGuard).
+ * Set<String> → Map<String, Int> 강화: 동명+동ID silent skip, 동명+다른ID loud WARN.
  */
 internal object RJarSymbolSeeder
 {
@@ -38,10 +44,12 @@ internal object RJarSymbolSeeder
         register: (ResourceReference, Int) -> Unit,
     )
     {
-        // v2 follow-up #1 (R-2): cross-class first-wins per attr name. appcompat R$attr
-        // 와 material R$attr 양쪽이 'colorPrimary' 를 등록 시도하면 첫 등장만 통과.
-        // outer scope = ZipFile 단위 (한 R.jar 안 모든 R$attr 클래스 공유).
-        val seenAttrNames = HashSet<String>()
+        // W3D4-β T11 (round 3 reconcile): RES_AUTO 통일 후 동명 충돌 widespread —
+        // STYLE 355 / COLOR 93 / DIMEN 130 dup (R.jar union 측정). 단 AAPT
+        // non-namespaced 정책으로 동명 = 동일 ID. per-type Map<String, Int> guard 로
+        // (1) 동명-동ID → silent skip (정상), (2) 동명-다른ID → loud WARN (회귀 신호).
+        // ZipFile 단위 outer scope.
+        val seenByType = HashMap<ResourceType, HashMap<String, Int>>()
         ZipFile(rJarPath.toFile()).use { zip ->
             for (entry in zip.entries())
             {
@@ -63,7 +71,7 @@ internal object RJarSymbolSeeder
                     packageName,
                     resourceType,
                     register,
-                    seenAttrNames,
+                    seenByType,
                 )
             }
         }
@@ -96,7 +104,7 @@ internal object RJarSymbolSeeder
         packageName: String,
         type: ResourceType,
         register: (ResourceReference, Int) -> Unit,
-        seenAttrNames: MutableSet<String>,
+        seenByType: MutableMap<ResourceType, HashMap<String, Int>>,
     )
     {
         val cls = try
@@ -107,7 +115,9 @@ internal object RJarSymbolSeeder
         {
             return
         }
-        val namespace = ResourceNamespace.fromPackageName(packageName)
+        // W3D4-β T11: RES_AUTO 통일 — AarResourceWalker:71 의 namespace 와 일치시켜
+        // bundle 의 byNs 와 callback 의 byId 가 같은 ResourceReference 좌표계 공유.
+        val namespace = ResourceNamespace.RES_AUTO
         for (field in cls.declaredFields)
         {
             if (!Modifier.isStatic(field.modifiers))
@@ -130,15 +140,12 @@ internal object RJarSymbolSeeder
             {
                 field.name
             }
-            // v2 follow-up #1 (R-2): R$attr 만 cross-class first-wins guard 적용.
-            // 다른 type (style/dimen/color/...) 은 namespace 가 R class 별 다르므로
-            // ResourceReference 자체로 동치 충돌 없음.
-            if (type == ResourceType.ATTR)
+            // W3D4-β T11 (round 3): per-type Map<String, Int> guard — same-id silent,
+            // different-id loud warn. 모든 type 에 적용.
+            val seenForType = seenByType.getOrPut(type) { HashMap() }
+            if (!ResourceTypeFirstWinsGuard.tryRegister(type, emitName, value, packageName, seenForType))
             {
-                if (!AttrSeederGuard.tryRegister(emitName, value, packageName, seenAttrNames))
-                {
-                    continue
-                }
+                continue
             }
             register(ResourceReference(namespace, type, emitName), value)
         }

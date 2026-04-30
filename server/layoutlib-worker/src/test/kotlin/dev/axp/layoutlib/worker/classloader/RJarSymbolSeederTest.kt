@@ -93,7 +93,10 @@ class RJarSymbolSeederTest {
         val seen = mutableMapOf<ResourceReference, Int>()
         RJarSymbolSeeder.seed(rJar, loader) { ref, id -> seen[ref] = id }
 
-        val ns = ResourceNamespace.fromPackageName("com.example")
+        // W3D4-β T11 (round 3 reconcile): seeded namespace 는 RES_AUTO 로 통일.
+        // AarResourceWalker:71 의 namespace 와 정합 — bundle.byNs 와 callback.byId 가
+        // 동일 ResourceReference 좌표계 공유.
+        val ns = ResourceNamespace.RES_AUTO
         assertEquals(0x7F010001, seen[ResourceReference(ns, ResourceType.ATTR, "fooAttr")])
         assertEquals(0x7F010002, seen[ResourceReference(ns, ResourceType.ATTR, "barAttr")])
     }
@@ -135,7 +138,8 @@ class RJarSymbolSeederTest {
         val seen = mutableMapOf<ResourceReference, Int>()
         RJarSymbolSeeder.seed(rJar, loader) { ref, id -> seen[ref] = id }
 
-        val ns = ResourceNamespace.fromPackageName("com.example")
+        // W3D4-β T11: RES_AUTO 통일.
+        val ns = ResourceNamespace.RES_AUTO
         assertEquals(0x7F010001, seen[ResourceReference(ns, ResourceType.ATTR, "foo")])
         assertFalse(
             seen.keys.any { it.name == "someArrayField" },
@@ -183,6 +187,76 @@ class RJarSymbolSeederTest {
             styles.none { it.first.name == "Theme_AxpFixture" },
             "underscore name 은 emit 안 됨 (변환 후만): ${styles.map { it.first.name }}",
         )
+    }
+
+    @Test
+    fun `cross-class 동명 + 동ID ATTR — silent first-wins`(@TempDir root: Path) {
+        // W3D4-β T11 (round 3): AAPT non-namespaced 정책의 정상 transitive ABI.
+        // appcompat / material / constraintlayout 의 colorPrimary 가 동일 ID 일 때 silent skip.
+        val attrAppcompat = makeRClass(
+            "androidx.appcompat", "attr",
+            mapOf("colorPrimary" to 0x7F030013),
+        )
+        val attrMaterial = makeRClass(
+            "com.google.android.material", "attr",
+            mapOf("colorPrimary" to 0x7F030013),
+        )
+        val rJar = buildRJar(root, listOf(attrAppcompat, attrMaterial))
+        val loader = URLClassLoader(arrayOf(rJar.toUri().toURL()), null)
+
+        val errOut = java.io.ByteArrayOutputStream()
+        val origErr = System.err
+        System.setErr(java.io.PrintStream(errOut))
+        try
+        {
+            val seen = mutableMapOf<ResourceReference, Int>()
+            RJarSymbolSeeder.seed(rJar, loader) { ref, id -> seen[ref] = id }
+            // 단일 entry — RES_AUTO 통일 + first-wins.
+            assertEquals(1, seen.size, "동명+동ID 는 단일 entry: $seen")
+            assertEquals(
+                0x7F030013,
+                seen[ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.ATTR, "colorPrimary")],
+            )
+            // silent — DIFFERENT id WARN 출력 없어야 함.
+            assertFalse(errOut.toString().contains("DIFFERENT id"), "동명+동ID 는 WARN 없음")
+        }
+        finally
+        {
+            System.setErr(origErr)
+        }
+    }
+
+    @Test
+    fun `cross-class 동명 + 다른 ID ATTR — loud WARN`(@TempDir root: Path) {
+        // W3D4-β T11 (round 3): namespaced build / R.jar 정합 오류 가정 시나리오.
+        val attrAppcompat = makeRClass(
+            "androidx.appcompat", "attr",
+            mapOf("colorPrimary" to 0x1),
+        )
+        val attrMaterial = makeRClass(
+            "com.google.android.material", "attr",
+            mapOf("colorPrimary" to 0x2),
+        )
+        val rJar = buildRJar(root, listOf(attrAppcompat, attrMaterial))
+        val loader = URLClassLoader(arrayOf(rJar.toUri().toURL()), null)
+
+        val errOut = java.io.ByteArrayOutputStream()
+        val origErr = System.err
+        System.setErr(java.io.PrintStream(errOut))
+        try
+        {
+            val seen = mutableMapOf<ResourceReference, Int>()
+            RJarSymbolSeeder.seed(rJar, loader) { ref, id -> seen[ref] = id }
+            assertEquals(1, seen.size)
+            // first-wins — ZipFile entries 등록 순서 결정.
+            val log = errOut.toString()
+            assertTrue(log.contains("DIFFERENT id"), "다른 ID 는 loud WARN: $log")
+            assertTrue(log.contains("colorPrimary"))
+        }
+        finally
+        {
+            System.setErr(origErr)
+        }
     }
 
     @Test
