@@ -88,6 +88,18 @@ class LayoutlibRenderer(
         System.setProperty(HEADLESS_PROPERTY_KEY, HEADLESS_PROPERTY_VALUE)
     }
 
+    /**
+     * W3D4-γ T15: initBridge + renderViaLayoutlib 양쪽이 동일 LoaderArgs 로 bundle cache hit
+     * 보장. JVM-wide ConcurrentHashMap key = 3-tuple identity. ctor 인자 (distDir, sample-app,
+     * runtime-classpath) 가 instance 동안 immutable 이므로 매 호출마다 build 해도 동일 hash.
+     */
+    private fun loaderArgs(): LayoutlibResourceValueLoader.Args =
+        LayoutlibResourceValueLoader.Args(
+            distDataDir = distDir.resolve(ResourceLoaderConstants.DATA_DIR),
+            sampleAppRoot = sampleAppModuleRoot,
+            runtimeClasspathTxt = sampleAppModuleRoot.resolve(AppLibraryResourceConstants.RUNTIME_CLASSPATH_TXT_PATH),
+        )
+
     override fun renderPng(layoutName: String): ByteArray {
         if (!initialized) {
             initBridge()
@@ -119,7 +131,12 @@ class LayoutlibRenderer(
         val icuPath = bootstrap.findIcuDataFile()?.absolutePathString()
             ?: error("ICU data 파일 누락 (data/icu/icudt*.dat)")
         val keyboardPaths = bootstrap.listKeyboardPaths().toTypedArray()
-        val enumValueMap = mutableMapOf<String, MutableMap<String, Int>>()
+        // W3D4-γ T15: framework attrs.xml 의 enum/flag 값 테이블을 Bridge.sEnumValueMap 에 주입.
+        // BridgeTypedArray.resolveEnumAttribute 가 ANDROID namespace path 에서 정적 sEnumValueMap
+        // 만 조회. bundle 은 어차피 renderViaLayoutlib 에서 동일 args 로 cache hit — 추가 비용 없음.
+        // 측정 (round 4): cold-start framework=39ms app=1ms aar=36ms build=13ms total=89ms.
+        val bundle = LayoutlibResourceValueLoader.loadOrGet(loaderArgs())
+        val enumValueMap = bundle.frameworkEnumValueMap()
 
         val logInterface = Class.forName(ILAYOUT_LOG_FQN, false, cl)
         val logProxy = Proxy.newProxyInstance(cl, arrayOf(logInterface), NoopLogHandler())
@@ -172,13 +189,7 @@ class LayoutlibRenderer(
         // W3D4 §3.1 (T8): W3D1 framework-only loader 가 3-입력 통합 loader 로 흡수됨.
         // framework + sample-app + 41 AAR 의 values XML 을 ANDROID/RES_AUTO 2-bucket 으로 build.
         // JVM-wide cache (Args 3-tuple key) — 첫 호출만 파싱 비용 발생.
-        val bundle = LayoutlibResourceValueLoader.loadOrGet(
-            LayoutlibResourceValueLoader.Args(
-                distDataDir = distDir.resolve(ResourceLoaderConstants.DATA_DIR),
-                sampleAppRoot = sampleAppModuleRoot,
-                runtimeClasspathTxt = sampleAppModuleRoot.resolve(AppLibraryResourceConstants.RUNTIME_CLASSPATH_TXT_PATH),
-            )
-        )
+        val bundle = LayoutlibResourceValueLoader.loadOrGet(loaderArgs())
         val resources = LayoutlibRenderResources(bundle, themeName)
         val params: SessionParams = SessionParamsFactory.build(
             layoutParser = parser,

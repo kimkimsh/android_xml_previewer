@@ -72,6 +72,35 @@ internal class LayoutlibResourceBundle private constructor(
     fun colorStateListCountForNamespace(ns: ResourceNamespace): Int =
         byNs[ns]?.colorStateLists?.size ?: 0
 
+    /**
+     * W3D4-γ T15: Bridge.init() 의 enumValueMap 인자용 export — framework (ANDROID) bucket 의
+     * 모든 AttrResourceValueImpl 에서 enum/flag 테이블을 추출하여 단일 Map<String, Map<String, Int>>
+     * 반환. layoutlib BridgeTypedArray.resolveEnumAttribute 가 ANDROID namespace attr 변환 시
+     * Bridge.sEnumValueMap.get(attrName).get("vertical") 형태로 조회 — Bridge.init 의 6번째
+     * 인자가 곧 sEnumValueMap.
+     *
+     * 비어있는 attr (enum/flag 자식 없음) 은 결과 map 에서 제외. RES_AUTO bucket 은 별도 경로
+     * (T14 의 getResource ATTR special-case + AttrResourceValueImpl.getAttributeValues) — 본
+     * helper 미관여.
+     */
+    fun frameworkEnumValueMap(): Map<String, Map<String, Int>>
+    {
+        val src = byNs[ResourceNamespace.ANDROID]?.attrs ?: return emptyMap()
+        val out = LinkedHashMap<String, Map<String, Int>>()
+        for ((name, attr) in src)
+        {
+            val raw = attr.attributeValues
+            if (raw.isNullOrEmpty()) continue
+            val converted = LinkedHashMap<String, Int>(raw.size)
+            for ((k, v) in raw)
+            {
+                if (v != null) converted[k] = v.toInt()
+            }
+            if (converted.isNotEmpty()) out[name] = converted
+        }
+        return out
+    }
+
     companion object
     {
         fun build(perNamespaceEntries: Map<ResourceNamespace, List<ParsedNsEntry>>): LayoutlibResourceBundle
