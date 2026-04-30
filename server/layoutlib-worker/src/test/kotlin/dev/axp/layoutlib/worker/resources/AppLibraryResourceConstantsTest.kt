@@ -43,9 +43,10 @@ class AppLibraryResourceConstantsTest
     }
 
     @Test
-    fun `ANDROID_NS_PREFIX 가 'android' 로 통일`()
+    fun `ANDROID_NS_PREFIX 가 'android' 로 통일 + NS_NAME_SEPARATOR 가 콜론`()
     {
-        // v2 round 2 follow-up #6: android: style parent normalization 의 prefix 비교용.
+        // v2 round 2 follow-up #6: android: style parent normalization 의 prefix + separator 비교용.
         assertEquals("android", AppLibraryResourceConstants.ANDROID_NS_PREFIX)
+        assertEquals(":", AppLibraryResourceConstants.NS_NAME_SEPARATOR)
     }
 }
