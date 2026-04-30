@@ -1354,13 +1354,21 @@ internal object LayoutlibResourceValueLoader {
         // RES_AUTO bucket = app + aar 통합. 순회 순서: AAR (classpath txt 순) → app (마지막 — sample-app 정의 우선).
         val resAutoEntries = aarResults.flatMap { it.entries } + appEntries
 
-        val tBuild0 = System.nanoTime()
-        val bundle = LayoutlibResourceBundle.build(
+        // v2 round 2 plan-review post-implementation 정정 (T5 review): framework-only 시 RES_AUTO 키
+        // 자체를 map 에 넣지 않아야 single-bucket 보장. LayoutlibResourceBundle.build 의 ?: continue
+        // 는 key 부재만 skip — empty list 가 들어오면 빈 NsBucket 생성하여 namespacesInOrder() 가
+        // [ANDROID, RES_AUTO] 반환. 조건부 add 가 정답.
+        val perNs = if (resAutoEntries.isEmpty()) {
+            mapOf(ResourceNamespace.ANDROID to frameworkEntries)
+        } else {
             mapOf(
                 ResourceNamespace.ANDROID to frameworkEntries,
                 ResourceNamespace.RES_AUTO to resAutoEntries,
             )
-        )
+        }
+
+        val tBuild0 = System.nanoTime()
+        val bundle = LayoutlibResourceBundle.build(perNs)
         val tBuild = ms(tBuild0)
 
         System.err.println(
