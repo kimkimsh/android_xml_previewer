@@ -81,6 +81,41 @@ class NamespaceAwareValueParserTest
         }
     }
 
+    @Test
+    fun `declare-styleable 의 attr 자식 (enum) 정상 skip`()
+    {
+        // W3D1 패턴 inherit: declare-styleable 안의 <attr> 가 <enum>/<flag> 자식을 가질 때
+        // depth-aware skip 으로 정상 종료. 두 attr 모두 수집되어야 함.
+        val xml = tmp("""<resources>
+            <declare-styleable name="View">
+                <attr name="visibility">
+                    <enum name="visible" value="0"/>
+                    <enum name="gone" value="2"/>
+                </attr>
+                <attr name="other"/>
+            </declare-styleable>
+        </resources>""")
+        val entries = NamespaceAwareValueParser.parse(xml, ResourceNamespace.RES_AUTO, "com.foo")
+        val attrs = entries.filterIsInstance<ParsedNsEntry.AttrDef>().map { it.name }.toSet()
+        assertEquals(setOf("visibility", "other"), attrs)
+    }
+
+    @Test
+    fun `top-level item 가 type 인자로 SimpleValue 생성`()
+    {
+        // W3D1 패턴 inherit: Material3 AAR 흔한 <item type="dimen" name="...">value</item> 패턴.
+        // T3/T4 가 real Material3 AAR 만나면 회귀 방지용 — 본 case 가 silently drop 되면 안 됨.
+        val xml = tmp("""<resources>
+            <item type="dimen" name="design_appbar_elevation">4dp</item>
+        </resources>""")
+        val entries = NamespaceAwareValueParser.parse(xml, ResourceNamespace.RES_AUTO, "com.material")
+        assertEquals(1, entries.size)
+        val e = entries[0] as ParsedNsEntry.SimpleValue
+        assertEquals(ResourceType.DIMEN, e.type)
+        assertEquals("design_appbar_elevation", e.name)
+        assertEquals("4dp", e.value)
+    }
+
     private fun tmp(content: String): Path
     {
         val f = Files.createTempFile("vals", ".xml")
