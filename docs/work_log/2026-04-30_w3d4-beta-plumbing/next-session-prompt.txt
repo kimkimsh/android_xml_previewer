@@ -1,0 +1,58 @@
+W3D4-γ phase entry. W3D4-β (T11/T12) 완료, Gap A (Material ThemeEnforcement
+sentinel attr namespace mismatch) + Gap B (color XML state list feed) 닫힘 —
+이전 세션 commit 4 개 (`2f1909b` plan v3, `e83d75d` T11, `4acb571` T12,
+`10ed4f3` T13 partial). 단 acceptance gate (`activity_basic.xml` SUCCESS) 는
+plan v3 §5.4 의 escalation 정책 정확히 적중 — fail surface 가 새 layer 로 shift
+→ tier3-basic-primary `@Disabled` 의 reason 갱신 (W3D4-γ-A carry).
+
+본 세션 첫 작업 = W3D4-γ-A (AttrDef enum/flag value capture) 의 design spec /
+plan v3.1 작성 → Codex+Claude pair round 4 → 구현.
+
+새 fail surface (t13-acceptance-gate-followup.md §1.3):
+[layoutlib.warning] "vertical" in attribute "orientation" is not a valid integer
+[layoutlib.warning] "center_horizontal" in attribute "gravity" is not a valid integer
+[layoutlib.warning] "parent" in attribute "layout_constraintEnd_toEndOf" is not a valid integer
+
+Root cause (검증됨, t13-acceptance-gate-followup.md §2.1):
+ParsedNsEntry.AttrDef = (name, namespace, sourcePackage) 만 보존, <enum>/<flag>
+자식 무시. NamespaceAwareValueParser 의 <attr> 처리에서 skipElement 로 child
+drop. LayoutlibResourceBundle.buildBucket 도 AttrResourceValueImpl.addValue
+호출 안 함. 결과: layoutlib Bridge 가 framework R$attr.orientation 의 enum
+table 을 RenderResources 에서 lookup 시 빈 attr → "vertical" 변환 fail.
+
+cold-read 6 docs (handoff §3.1 list):
+1. docs/work_log/2026-04-30_w3d4-beta-plumbing/handoff.md (본 prompt 의 source)
+2. docs/work_log/2026-04-30_w3d4-beta-plumbing/t13-acceptance-gate-followup.md (W3D4-γ root cause)
+3. docs/work_log/2026-04-30_w3d4-beta-plumbing/session-log.md (T11/T12 산출 + LM)
+4. docs/work_log/2026-04-30_w3d4-beta-plumbing/round3-pair-review.md (round 3 정책)
+5. docs/superpowers/plans/2026-04-30-w3d4-beta-plumbing.md (plan v3, T11/T12 산출)
+6. docs/superpowers/specs/2026-04-29-w3d4-material-fidelity-design.md (자료구조 spec)
+
+진행:
+1. 베이스라인 verify (215 unit + 14 IT + 2 SKIP)
+2. W3D4-γ-A empirical investigation:
+   - grep "AttrResourceValueImpl\|addValue\|<enum>\|<flag>" 로 layoutlib API 확인
+   - framework attrs.xml census — <attr format="enum"> / <attr format="flag"> 빈도
+   - javap layoutlib BridgeContext.obtainStyledAttributes + ResourceHelper.parseValue
+   - R$id.parent == 0 callback.byId 등록 검증 (W3D4-γ-B 인접 체크)
+3. design spec / plan v3.1 작성 — explicit code/diff (LM-W3D4-D 회피)
+4. Codex+Claude pair round 4 (plan-revision review):
+   - Codex: codex exec --skip-git-repo-check --sandbox danger-full-access (LM-G)
+   - Claude subagent
+   - Q1-Qn query
+5. Verdict reconcile → plan v3.1 GO/REVISE
+6. 구현 (subagent-driven) — ParsedNsEntry.AttrDef enum/flag fields + parser child
+   loop + Bundle.buildBucket addValue + 단위테스트 + IT 측정
+7. tier3-basic-primary @Disabled 제거 시도 — 진짜 SUCCESS 인지 vs 또 다른 layer
+   shift 인지 분류 (LM-W3D4-β-H)
+
+CLAUDE.md 규약 준수 (brace own-line, no default params, Zero Tolerance, comments
+보존). carry-forward LM (handoff §4 5 항목 모두 다음 세션 진입 시 내재화):
+- LM-W3D4-β-D (KDoc 안 `/*` 패턴 회피)
+- LM-W3D4-β-E (assertNotNull chain 금지)
+- LM-W3D4-β-F (IT 실행은 -PincludeTags=integration)
+- LM-W3D4-β-G (subagent unzip 시 --directory /tmp/... 명시)
+- LM-W3D4-β-H (acceptance fail 시 stack trace 우선 분류)
+
+진행 후 plan v3.1 GO 시 subagent-driven implementation. 각 task 단위 commit + push
+(CLAUDE.md task-unit completion).
