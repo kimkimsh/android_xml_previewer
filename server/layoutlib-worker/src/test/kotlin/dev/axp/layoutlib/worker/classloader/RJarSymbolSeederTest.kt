@@ -160,6 +160,32 @@ class RJarSymbolSeederTest {
     }
 
     @Test
+    fun `seed 가 R style underscore name 을 dot name 으로 emit`(@TempDir root: Path) {
+        // v2 round 2 follow-up #11: end-to-end 회귀 — Theme_AxpFixture seeding
+        // → Theme.AxpFixture lookup. T6 LayoutlibRenderResources 의 dot-name lookup 정합.
+        val styleClass = makeRClass(
+            "com.fixture",
+            "style",
+            mapOf("Theme_AxpFixture" to 0x7F0C0001),
+        )
+        val rJar = buildRJar(root, listOf(styleClass))
+        val loader = URLClassLoader(arrayOf(rJar.toUri().toURL()), null)
+
+        val emitted = mutableListOf<Pair<ResourceReference, Int>>()
+        RJarSymbolSeeder.seed(rJar, loader) { ref, id -> emitted += ref to id }
+
+        val styles = emitted.filter { it.first.resourceType == ResourceType.STYLE }
+        assertTrue(
+            styles.any { it.first.name == "Theme.AxpFixture" },
+            "underscore→dot canonicalization (실측 emit name): ${styles.map { it.first.name }}",
+        )
+        assertTrue(
+            styles.none { it.first.name == "Theme_AxpFixture" },
+            "underscore name 은 emit 안 됨 (변환 후만): ${styles.map { it.first.name }}",
+        )
+    }
+
+    @Test
     fun `parseRClassName internal — 패키지 + type 추출`() {
         val parsed = RJarSymbolSeeder.parseRClassName("androidx/constraintlayout/widget/R\$attr")
         assertEquals("androidx.constraintlayout.widget" to "attr", parsed)
