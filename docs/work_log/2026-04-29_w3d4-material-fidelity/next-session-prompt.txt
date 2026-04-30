@@ -1,55 +1,56 @@
-W3D4 MATERIAL-FIDELITY 진행. docs/work_log/2026-04-29_w3d4-material-fidelity/spec-plan-handoff.md 읽고 다음 단계 = plan v1 페어 리뷰 round 2 (plan-review).
+W3D4-β plan-revision phase. T1-T9 implementation 완료 (origin/main `b27334d`),
+자료구조 + chain walker 정상 (MaterialFidelity 4/4 PASS), 단 acceptance gate
+(primary `activity_basic.xml` SUCCESS) 가 2 production-pipeline gap 으로 fail
+→ T9 primary @Disabled W3D4-β carry → plan-revision escalate.
 
-현 상태 (origin/main, commit b584f31):
-- spec round 1 → 페어 round 1 (Codex+Claude, full convergence Q3+Q5, set-converge Q1+Q2+Q4+Q6) → spec round 2 GO 완료. ρ→σ FULL, RES_AUTO 모드 통일, R name canon (R-1) + dup attr ID (R-2) 추가.
-- plan v1 작성 완료 (2349줄, T1-T10 TDD steps, 신규 unit ~46 case, integration 12→13).
-- 베이스라인 167 unit + 12 integration PASS + 1 SKIP (tier3-glyph), BUILD SUCCESSFUL, smoke "ok" — 변동 없음.
+본 세션 첫 작업 = W3D4-β plan v3 작성을 위한 root-cause investigation 후
+Codex+Claude pair round 3 (plan-revision review).
 
-본 세션 첫 작업:
-1. spec round 2 + plan v1 cold-read (handoff §6 의 5 문서).
-2. 페어 round 2 dispatch — Codex (direct CLI: `codex exec --skip-git-repo-check --sandbox danger-full-access`, ~/.codex/config.toml 의 latest GPT + xhigh effort) + Claude subagent (general-purpose). 두 reviewer 병렬 dispatch (Codex background, Claude foreground 가 Codex 보다 빨리 끝남).
-3. plan v1 의 6+1 query 검토 — handoff §3.1 + §8 prompt template 의 Q1-Q7.
-4. 양 verdict reconcile (full convergence / set-converge / divergent → judge round 결정).
-5. plan v2 작성 (in-place edit) 또는 REVISE 시 affected task 만 수정.
-6. user 확인 후 subagent-driven implementation 진입 (superpowers:subagent-driven-development).
+Gap A: Material ThemeEnforcement.checkAppCompatTheme 가 Theme.AxpFixture 를
+AppCompat descendant 로 인식 못함 (chain walker 자체는 17 hop walk PASS,
+sentinel attr lookup 단계 wiring gap).
 
-페어 round 2 prompt 골격 (handoff §8):
+Gap B: Bridge getColorStateList 의 RES_AUTO color XML state list (m3_highlighted_text 등)
+input feed 부재 (AAR res/color/*.xml walker 부재 + callback hook 미wiring).
 
-W3D4 MATERIAL-FIDELITY plan v1 페어 리뷰. round 1 (spec) 이 4 critical fix 도출 → spec round 2 GO + plan v1 작성. 본 round 가 plan v1 의 잠재 weak point 검증.
+cold-read 6 문서 (handoff §6 의 list):
+1. docs/work_log/2026-04-29_w3d4-material-fidelity/next-session-handoff.md (본 prompt 의 source)
+2. docs/work_log/2026-04-29_w3d4-material-fidelity/t9-acceptance-gate-discovery.md (gap 정밀 분석)
+3. docs/work_log/2026-04-29_w3d4-material-fidelity/t8-renderer-integration-w3d1-absorption.md (5 LM-T8-* + W3D5+ playbook)
+4. docs/superpowers/plans/2026-04-29-w3d4-material-fidelity.md (plan v2, T1-T10 spec)
+5. docs/superpowers/specs/2026-04-29-w3d4-material-fidelity-design.md (spec round 2)
+6. docs/work_log/2026-04-29_w3d4-material-fidelity/round2-pair-review.md (round 2 verdict)
 
-Repo: /home/bh-mark-dev-desktop/workspace/android_xml_previewer
-Plan: docs/superpowers/plans/2026-04-29-w3d4-material-fidelity.md (2349줄, T1-T10)
-Spec: docs/superpowers/specs/2026-04-29-w3d4-material-fidelity-design.md (564줄)
-Predecessor: docs/work_log/2026-04-29_w3d3-l3-classloader/next-session-handoff.md
+진행:
+1. 베이스라인 verify (151 unit + 14 IT + 2 SKIP)
+2. Gap A empirical investigation:
+   - grep "ThemeEnforcement\|checkAppCompatTheme\|obtainStyledAttributes\|resolveThemeAttribute"
+   - Material AAR 의 ThemeEnforcement.checkAppCompatTheme decompile (sentinel attr 식별)
+   - BridgeContext + LayoutlibRenderResources wiring 의 ID/name lookup path 검증
+3. Gap B empirical investigation:
+   - grep "getColorStateList\|getParser\|MinimalLayoutlibCallback"
+   - AAR 안 res/color/*.xml 카운트 (`unzip -l ... | grep res/color/`)
+   - 기존 W3D1 framework 가 color XML 처리했는지 (git show pre-T8 SHA 의 FrameworkResourceValueLoader.kt)
+4. plan v3 (`<date>-w3d4-beta-plumbing.md`) 작성 — T11/T12/T13 spec
+5. Codex+Claude pair round 3 dispatch (plan-revision review):
+   - Codex: codex exec --skip-git-repo-check --sandbox danger-full-access (LM-G)
+   - Claude subagent
+   - Q1-Q5 query (handoff §4.4)
+6. Verdict reconcile → plan v3 GO/REVISE
+7. T11/T12/T13 implementation (subagent-driven)
+8. acceptance gate 닫힘 verify — primary @Disabled 제거 + PASS
 
-검토 axis:
-Q1. T6 parseReference regex (?<ns>:attr/X, @<ns>:<type>/<name>) 가 layoutlib Bridge 의 실제 ref 패턴과 일치? known issue?
-Q2. T7 의 RJarSymbolSeeder 변경 위치 명시 충분? grep 후 sub-step 의 explicit code 가 필요?
-Q3. T9 locateAll() helper 시그니처 — W3D3 helper 의 정확한 반환 type?
-Q4. T8 caller enumeration — SharedLayoutlibRenderer.getOrCreate 의 호출 site 누락 가능성? CLI / MCP / 기존 test?
-Q5. dedupe deterministic — runtime-classpath.txt 순서 외 Gradle 결정성 위반 가능 케이스?
-Q6. chain walker hop limit (MAX_REF_HOPS=10, MAX_THEME_HOPS=20) 가 실 Material3 chain depth 보다 안전 마진?
-Q7. 일반 critique — TDD 순서 / atomic commit boundary / 누락된 step.
-
-출력 형식:
-## Q<N> — <한 줄 제목>
-**Verdict**: AGREE / DISAGREE / NUANCED / INSUFFICIENT-INFO
-**Reasoning**: <2-4 문장>
-**Recommended action**: <1-2 줄, DISAGREE/NUANCED 만>
-**Confidence**: high/medium/low + reason
-**Evidence**: <empirical 근거 — javap, code grep, layoutlib jar inspect>
-
-종합 verdict: GO / GO_WITH_FOLLOWUPS / REVISE_REQUIRED.
-
-CLAUDE.md 규약 (Code Style brace, no default params, Zero Tolerance for Magic Strings, shared_ptr default 등) 준수. 한국어 답변, 코드/식별자만 영어.
+CLAUDE.md 규약 준수 (brace own-line, no default params, Zero Tolerance, comments 보존
+— 단 v2 round 2 의 발견 LM-W3D4-D~H 모두 next session 에 carry).
 
 LM 회피:
-- LM-W3D3-A / LM-α-A: empirical-verifiable claim 직접 측정. 페어 의견만으로 verdict 채택 X.
-- LM-α-B: Codex stalled-final 시 single-source verdict (Claude empirical) + 명시 flagging.
-- LM-G: codex exec 항상 --skip-git-repo-check --sandbox danger-full-access. codex-rescue subagent bypass.
-- LM-W3D3-B: kotlin.test 없음, JUnit Jupiter Assertions 만 (plan v1 모든 test 동등).
+- LM-W3D3-A / LM-α-A: empirical-verifiable claim 직접 측정 (decompile, grep, gradle inspect).
+- LM-α-B: Codex stalled-final 시 single-source verdict + 명시 flagging.
+- LM-G: codex exec --skip-git-repo-check --sandbox danger-full-access direct CLI.
+- LM-W3D3-B: JUnit Jupiter Assertions only.
 - LM-α-D: Kotlin backtick 함수명 안 마침표 금지.
+- LM-W3D4-D (placeholder 관행 위험): plan v3 도 explicit code/diff 강제 — T11/T12 의 fix 위치를 grep 후 정확한 inline diff.
+- LM-W3D4-E/F (real-world fixture 의 latent bug): plan v3 의 round 3 페어 review 가 real AAR fixture 도 verification material 에 포함.
 
-진행 후 plan v2 작성 + user 확인 + subagent-driven implementation. 각 task 단위 commit + push (CLAUDE.md task-unit completion).
-
-세부 query / 페어 dispatch 의 actual prompt / verdict reconcile 패턴은 spec round 1 페어가 좋은 모델 (직전 W3D3 세션에서). handoff §3, §8 참조.
+진행 후 plan v3 GO 시 subagent-driven implementation. 각 task 단위 commit + push
+(CLAUDE.md task-unit completion).
