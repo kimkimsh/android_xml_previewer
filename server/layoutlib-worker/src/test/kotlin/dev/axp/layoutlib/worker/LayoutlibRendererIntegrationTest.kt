@@ -1,9 +1,11 @@
 package dev.axp.layoutlib.worker
 
 import com.android.ide.common.rendering.api.Result
+import dev.axp.layoutlib.worker.resources.LayoutlibResourceValueLoader
 import dev.axp.layoutlib.worker.session.SessionConstants
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
@@ -26,12 +28,21 @@ import java.nio.file.Path
 class LayoutlibRendererIntegrationTest
 {
 
+    @BeforeEach
+    fun resetBundleCache()
+    {
+        // W3D4-β T13 (round 3 reconcile, Claude Q6.3): JVM-wide bundle cache 가 stale 면
+        // T11/T12 효과 측정 무효화 가능. 각 test 시작 시 명시 clear.
+        LayoutlibResourceValueLoader.clearCache()
+    }
+
     @org.junit.jupiter.api.Disabled(
-        "W3D4-β carry: T1-T8 자료구조 + chain walker 정상 (MaterialFidelityIntegrationTest 4/4 PASS), " +
-            "단 primary 렌더 시 2 production-pipeline gap — (1) Material ThemeEnforcement.checkAppCompatTheme 가 " +
-            "Theme.AxpFixture 를 AppCompat descendant 로 인식 못함 (sentinel attr seeding 필요), " +
-            "(2) Bridge getColorStateList 가 RES_AUTO 의 color XML state list (e.g. m3_highlighted_text) input feed wiring 부재. " +
-            "Plan-revision (W3D4-β) 의 T11/T12 fix 후 @Disabled 제거.",
+        "W3D4-γ carry: T11 + T12 (W3D4-β) 적용 후 acceptance gate fail 위치가 shift — Gap A/B 모두 closed " +
+            "(walker: 41 AARs, 191 color-state-lists 통합 확인). 새 gap = AttrDef 의 enum/flag 자식 값 미캡처 " +
+            "(`<attr name=\"orientation\" format=\"enum\"><enum name=\"vertical\" value=\"1\"/></attr>` 형태의 enum/flag " +
+            "table 이 ParsedNsEntry.AttrDef + LayoutlibResourceBundle.attrs 에 보존 안 됨). 결과: layoutlib warning — " +
+            "\"vertical\" in attribute \"orientation\" is not a valid integer / \"parent\" in layout_constraintEnd_toEndOf. " +
+            "W3D4-γ A1 (AttrDef enum/flag value capture) fix 후 @Disabled 제거. round 3 plan §5.4 escalation 의 정확한 surface.",
     )
     @Test
     fun `tier3 basic primary — activity_basic 가 직접 SUCCESS`()
