@@ -155,3 +155,48 @@ W3D4-β plan v3 의 escalation §5.4 정책에서 도래한 enum/flag capture ph
 | LM-W3D4-γ-A | round 4 reviewer (Claude) 가 Q5 의 NsBucket byType ↔ attrs 분리 issue 미발견 — Codex 의 file:line evidence 가 catch. 향후 reviewer prompt 에 "bundle 의 lookup path 를 trace 하라" 명시 권장 | round 5+ pair prompt 갱신 |
 | LM-W3D4-γ-B | `Integer.decode` 가 32-bit unsigned hex (`0x80000000`, `0xffffffff`) 에 NumberFormatException — `Long.decode(...).toInt()` 가 정합. attr literal 파싱 시 framework attrs.xml 의 mask flag 검증 필수 | parseAttrValueLiteral 본 implementation 영구 |
 | LM-W3D4-γ-C | ThemeEnforcement 의 multi-sentinel check — colorPrimary 닫힘 후 TextAppearance 가 다음 layer. Material AAR 안 ThemeEnforcement 의 sentinel surface 가 stepwise 발견 — δ phase 에서 한 번에 census 권장 | W3D4-δ |
+
+---
+
+## W3D4-δ planning session append (2026-05-04)
+
+### W3D4-δ Outcome (planning phase only — implementation 미진입)
+
+W3D4-γ T16 partial 의 escalation 정책 정확히 적중 (LM-W3D4-β-H + LM-W3D4-γ-C 인계) — TextAppearance sentinel 의 multi-sentinel surface census 후 plan v3.2 작성. 3-stream parallel investigation (subagent A: ThemeEnforcement bytecode 7-attr 전체 census · subagent B: Theme.AxpFixture 15-level parent chain · subagent C: failing widget activity_basic.xml:43 MaterialButton 의 정확한 call site) 결과 dominant root cause 가설 H2 도출 — `LayoutlibResourceBundle.getResource(STYLE ref)` 의 byType-only 경로가 styles map 도달 못 함 (W3D4-γ T14 round 4 Q5 ATTR special-case 의 STYLE 변종, 자료구조 분리 패턴 동일).
+
+### W3D4-δ files (planning artefacts)
+
+#### docs
+- `docs/superpowers/specs/2026-05-04-w3d4-delta-textappearance-sentinel-design.md` (신규) — plan v3.2, round 5 reconcile 의 12 deltas inline 적용 완료. T17 (5-question diagnostic battery) → T18 (H2 hypothesis-targeted fix, dominant; §5.2 walkParent fallback 백업) → T19 (acceptance gate close).
+- `docs/work_log/2026-04-30_w3d4-beta-plumbing/round5-pair-review.md` (신규) — Codex+Claude round 5 verdict + 12 deltas + 3 escalation notes.
+
+### W3D4-δ pair-review verdict
+
+- **Round 5** (planning-phase Codex+Claude pair, 2026-05-04): GO_WITH_FIXES → APPLIED (Codex 0.91 / Claude 0.88). 12 plan deltas inline 적용. 가장 강한 convergence: Q4 양쪽 DISAGREE 의 동일 file:line evidence (`Args.sampleAppRoot` 정합, `PathLocator` 부재, `@Tag` 모순) — KILL POINT direct-verify (memory feedback_pair_review_codex_killpoint.md 패턴) — judge round 불요. 자세한 내용은 `round5-pair-review.md`.
+
+### W3D4-δ 신규 LM (round 5 산출)
+
+| LM | 내용 | 후속 |
+|---|---|---|
+| LM-W3D4-δ-A | spec 작성 시 fabricated API references (`PathLocator.locateW3D4Triplet()` + `Args.sampleAppModuleRoot`) 가 양쪽 reviewer Q4 DISAGREE 로 catch. compile fail 확정. 향후 plan 작성 시 모든 코드 sample 의 함수/필드 호출은 실 source verify 후 인용 의무 | round 6+ pair prompt 갱신 — "코드 sample 의 모든 식별자 grep 검증" 명시 |
+| LM-W3D4-δ-B | NsBucket 의 byType ↔ styles ↔ attrs 3-way 분리에서 `getResource` 가 byType 만 보는 패턴이 type 별 sibling KILL POINT — γ T14 (ATTR) + δ-A (STYLE) 두 차례 catch. 향후 NsBucket 의 새 type-specific map 추가 시 동일 회귀 위험 — code-review checklist 화 | future bucket 추가 시 review item |
+| LM-W3D4-δ-C | round 5 escalation: `LayoutlibResourceValueLoader` 가 `runtime-classpath.txt` 부재 시 silent empty AAR list (loader.kt:42-44) — false-PASS 위험. T17 의 graceful skip 패턴 (assumeTrue) 으로 본 phase 의 영향 회피, 단 W4+ hardening pass 권장 | W4+ scope |
+| LM-W3D4-δ-D | T16 partial → T17/T18/T19 의 phase split 이 round 5 Q4 catch 후 `@Tag("integration")` 유지 + KDoc 정합 결정. T17 의 RED-on-main 우려는 default unit suite excludes integration tag (axp.kotlin-common.gradle.kts:43-50) 로 회피 — 본 결정 명시화 | T17 commit 시점 명시 |
+
+### What's blocking / carried forward
+
+#### W3D4-δ implementation (다음 세션)
+1. **T17** — `W3D4DeltaThemeChainDiagnosticTest.kt` 신규 (IT-tagged, 5 question battery). spec §4.1 에 완전 코드 포함 — round 5 의 fabricated API fix 적용 후 compile 가능 상태.
+2. **T18** — H2 dominant 적용 (§5.1 의 `bundle.getResource` STYLE special-case + 회귀 테스트 4 cases). T17 결과에 따라 §5.2 (walkParent fallback) 추가 commit 검토.
+3. **T19** — `tier3-basic-primary` `@Disabled` 제거 + IT 측정. PASS 시 δ-A close. fail surface shift 시 W3D4-δ-B (`enforceMaterialTheme → checkMaterialTheme → colorPrimaryVariant` gate) 또는 W3D4-ε (R$styleable layer) escalate.
+
+#### Out-of-scope (carry)
+- **W3D4-δ-B** — colorPrimaryVariant gate. T19 fail 시 escalate.
+- **W3D4-ε** — R$styleable seeder gap (RJarSymbolSeeder.kt:64-66). T19 fail + δ-B 적용 후도 fail 시 §5.3.1 의 callback instrumentation 으로 narrow.
+- **W3D4 tier3-glyph** — Font wiring, W4 carry.
+
+### W3D4-δ commits + push (planning only)
+
+- (다음 commit) `docs(w3d4-delta): plan v3.2 + round 5 pair-review (GO_WITH_FIXES → APPLIED)` — 본 session-log append + plan v3.2 + round5-pair-review.md.
+
+T17/T18/T19 의 implementation commit 은 별도 session 진입 시 수행 (T17 은 IT-tagged 로 default unit suite 제외 — RED-on-main 가능, integration runner 만 PASS/FAIL signal).
