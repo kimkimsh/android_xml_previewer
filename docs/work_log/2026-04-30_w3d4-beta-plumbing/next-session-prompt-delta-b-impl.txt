@@ -1,0 +1,134 @@
+W3D4-δ-B implementation phase entry. W3D4-δ-B planning phase 완료 (plan v4.1
++ round 6 pair-review APPLIED → GO) — 이전 session commit 2 개 (`db17bfe`
+handoff-delta-b + next-session-prompt-delta-b, `c8f835f` plan v4.1 + round 6
+pair-review + session-log append).
+
+본 세션 첫 작업 = plan v4.1 의 T20 → T21 → T22 implementation (각 task 단위
+commit + push, CLAUDE.md task-unit completion). implementation phase 이므로
+Codex+Claude 1:1 pairing 비대상 (CLAUDE.md §Codex: planning ONLY). 단
+investigation / fix verification 은 subagent burst 가능 (LM-W3D4-β-G
+unzip --directory /tmp/w3d4dbi-* 의무).
+
+dominant 결정 (round 6 reconcile): 옵션 B — fixture Theme.AxpFixture 안
+`<item name="colorPrimaryVariant">?attr/colorPrimary</item>` 1-line 추가.
+gate PASS (actual semantic) — Codex+Claude convergent BridgeContext bytecode
+trace: Resources.Theme.obtainStyledAttributes(int[]) → Resources_Theme_Delegate
+.internalObtainStyledAttributes → BridgeContext.createStyleBasedTypedArray
+(style=null) → mRenderResources.findItemInTheme (LayoutlibRenderResources.kt:
+211-221) → bridgeSetValue → BridgeTypedArray.hasValue(slot) returns
+mResourceData[slot] != null. fixture-side 직접 정의 → chain walker first-match
+→ BridgeContext.hasValue=true.
+
+진행 baseline (T19 partial 후):
+[LayoutlibRenderer] createSession ERROR_INFLATION
+  msg=The style on this component requires your app theme to be Theme.MaterialComponents (or a descendant).
+  exc=IllegalArgumentException
+Caused by: at ThemeEnforcement.checkTheme(247) ← checkMaterialTheme(216) ←
+  checkCompatibleTheme(144) ← obtainStyledAttributes(76) ← MaterialButton.<init>(239)
+
+옵션 B 의 enable mechanism: te_disasm.txt:411 isTheme path 의
+Theme.obtainStyledAttributes(int[]{colorPrimaryVariant}).hasValue(0) 가
+fixture 의 직접 정의 발견 → ?attr/colorPrimary chain hop → fixture
+themes.xml:6 의 colorPrimary=#6750A4 종착 → bridgeSetValue → hasValue=true →
+isTheme=true → checkMaterialTheme PASS. 후속 checkAppCompatTheme 도 colorPrimary
+hasValue 검사 — fixture 의 colorPrimary 정의로 PASS.
+
+Cold-read 6 docs (handoff-delta-b-impl §3.1 list, 이 순서):
+1. docs/work_log/2026-04-30_w3d4-beta-plumbing/handoff-delta-b-impl.md (본 prompt 의 source)
+2. docs/superpowers/specs/2026-05-06-w3d4-delta-b-gate-chain-design.md (plan v4.1 —
+   T20/T21/T22 explicit code/diff, round 6 12 deltas inline, §4.2 footnote 의
+   BridgeContext-equivalence note + §6.3 의 setupResources caveat)
+3. docs/work_log/2026-04-30_w3d4-beta-plumbing/round6-pair-review.md (round 6 verdict)
+4. docs/work_log/2026-04-30_w3d4-beta-plumbing/t19-acceptance-gate-followup.md
+   (δ-A close + δ-B surface entry — 본 phase 의 측정 baseline)
+5. docs/work_log/2026-04-30_w3d4-beta-plumbing/session-log.md (β/γ/δ/δ-B 전체
+   progressive escalation 카탈로그)
+6. docs/superpowers/specs/2026-05-04-w3d4-delta-textappearance-sentinel-design.md
+   (plan v3.2 — §6.3 escalation 정책 origin)
+
+진행:
+
+0. 베이스라인 verify
+   - cd server && ./gradlew test --console=plain
+     → BUILD SUCCESSFUL — 241 unit / 0 fail
+   - ./gradlew :layoutlib-worker:test -PincludeTags=integration --console=plain
+     → 19 IT PASS + 2 SKIP (T17 5-probe 5/5 PASS, δ-B + tier3-glyph SKIP)
+
+1. T20 — Diagnostic 5-probe battery (plan v4.1 §4.1, IT-tagged)
+   신규 W3D4DeltaBGateChainProbeTest.kt — plan v4.1 §4.1 의 explicit 코드 그대로
+   (round 6 Q1 equivalence note + LM-W3D4-δ-A self-check + P5 null-safety inline
+   적용 후 compile 가능).
+
+   5 probes:
+   - P1: bundle.getResource(ATTR colorPrimaryVariant) — RES_AUTO bucket 의 attr 정의 검증
+   - P2: resources.findItemInTheme(ATTR colorPrimaryVariant) — chain walker mThemeStack walk
+   - P3: resources.resolveResValue(item).value — chain hop 의 종착 (concrete color or @color/...)
+   - P4: bundle.getResource(STYLE Widget.Material3.Button) — T18 의 STYLE special-case 회귀 가드
+   - P5: resources.findItemInTheme(ATTR colorPrimary) — chain anchor 검증 (#6750A4)
+
+   PASS/FAIL 패턴이 plan v4.1 §4.2 의 결정 매트릭스에 mapped — T21 fix 의 chain
+   shortening 효과 vs replacement 효과 식별. P2/P3 의 current state 측정이 결정적
+   (이미 PASS = inheritance chain 으로 도달, 옵션 B 가 chain shortening + future-proof).
+   commit 1: T20 신규 (RED-on-main 가능, default unit suite 제외, LM-W3D4-δ-D 인계).
+
+2. T21 — fixture themes.xml 1-line add (plan v4.1 §5.1)
+   fixture/sample-app/app/src/main/res/values/themes.xml 의 Theme.AxpFixture 안
+   <item name="colorPrimaryVariant">?attr/colorPrimary</item> 1-line 추가.
+
+   T20 재측정 → 5/5 PASS 검증 (P2/P3 가 chain shortening 으로 PASS).
+   T17 5-probe regression guard 도 동시 재측정 → 5/5 PASS 보장 (LM-W3D4-δ-B carry).
+   commit 2: T21 fixture 1-line.
+
+3. T22 — Acceptance gate close (plan v4.1 §6.1)
+   LayoutlibRendererIntegrationTest.kt 의 `tier3 basic primary` `@Disabled` 제거
+   → IT 1회 실행. 본 @Disabled 의 message 자체가 LM-W3D4-δ-G trigger
+   (T19 작성 시 "M3 path 가 enforceMaterialTheme=false 로 SKIP" 잘못 진술 —
+   실제 Widget.Material3.Button 본체 override 부재, true 상속). 제거 자동으로
+   stale text 정리.
+
+   PASS 조건:
+   - Result.Status.SUCCESS == renderer.lastSessionResult?.status
+   - bytes.size > MIN_RENDERED_PNG_BYTES + isPngMagic(bytes) == true
+   - IT 수: 19 + 2 SKIP → 25 PASS + 1 SKIP (tier3-glyph W4 carry only)
+   - system-err 에 [layoutlib.warning] 또는 IllegalArgumentException 없음
+
+   PASS 시 W3D4-δ phase 종결 (δ-A + δ-B 양쪽 closed). FAIL 시 plan v4.1 §6.3
+   escalation 정책 적용 + t22-acceptance-gate-followup.md 작성:
+   - W3D4-ε (R$styleable layer, RJarSymbolSeeder.kt:64-66 skip) — §5.3.1
+     callback instrumentation (axp.debug.callback) 으로 narrow
+   - direct-sentinel widget surface (BadgeDrawable + BaseTransientBottomBar) — 현
+     fixture 부재 이지만 future fixture surface
+   - Resources_Theme_Delegate.setupResources mutation (Codex Q1 caveat,
+     /tmp/w3d4db-codex-Resources_Theme_Delegate-javap.txt:165-199) — active
+     RenderResources stack mutation path
+   commit 3: T22 acceptance gate close (또는 fail surface 분류 후 escalate plan).
+
+4. T22 PASS 시 W3D4 phase 종결 + W4 entry handoff
+   - session-log.md append (W3D4-δ-B implementation summary)
+   - handoff-w4-entry.md 신규 (W4 entry plan — tier3-glyph carry + namespace-aware mode 검토)
+   - next-session-prompt-w4.txt 신규 (paste-able prompt)
+
+CLAUDE.md 규약 준수 (brace own-line, no default params, Zero Tolerance, comments
+보존, Three Hard Rules for Comments — 영문 only, function/structure 만, ticket/PR
+/phase reference 최소화 per Rule 2 OUT-OF-SCOPE 확대). carry-forward LM (handoff-
+delta-b-impl §4 의 17 항목 모두 다음 세션 진입 시 내재화):
+- LM-W3D4-β-D~H (β session carry)
+- LM-W3D4-γ-A~C (γ session carry)
+- LM-W3D4-δ-A: spec 코드 sample 의 모든 식별자 grep 검증 의무 (plan v4.1 §4.1 verify ✓)
+- LM-W3D4-δ-B: NsBucket type-specific map 분리 KILL POINT — T20 P4 가 회귀 가드
+- LM-W3D4-δ-C: runtime-classpath.txt 부재 silent empty AAR (W4+ hardening)
+- LM-W3D4-δ-D: IT-tagged RED-on-main 가능 (default unit suite 제외) — T20 동일
+- LM-W3D4-δ-E: acceptance fail surface 의 stack-trace entry-point 비교 — T22 fail 시 적용
+- LM-W3D4-δ-F: CLAUDE.md Rule 2 OUT-OF-SCOPE 확대 (phase/task identifier 회피)
+- LM-W3D4-δ-G: annotation message 안 technical claim 의 file:line evidence 사전 verify
+  의무 (round 6 catch — T19 `@Disabled` stale text). T22 의 제거 자동 close, future
+  annotation 작성 시 동일 LM 적용
+- LM (CLAUDE.md Three Hard Rules for Comments)
+
+LM-G (codex sandbox bypass 직접 CLI) — 본 implementation phase 무관 (planning
+phase 에만 적용). 실 implementation 은 subagent-driven 가능 (LM-W3D4-β-G
+unzip --directory /tmp/w3d4dbi-* 의무, T22 fail 시 BridgeContext.javap +
+Resources_Theme_Delegate.javap 재unzip 가능 — round 6 의 /tmp/w3d4db-codex-*
+참조 가능).
+
+에이전트팀 구동하고 각종 스킬들 사용해서 철저히 분석 검토하면서 진행해줘.
