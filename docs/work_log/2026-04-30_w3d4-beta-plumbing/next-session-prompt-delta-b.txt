@@ -1,0 +1,122 @@
+W3D4-δ-B planning entry. W3D4-δ implementation phase (plan v3.2 의 T17/T18/T19)
+완료 — 4 commit pushed (`2ce640a` T17 5-probe diagnostic IT, `22f7077` T18 H2
+KILL POINT fix `LayoutlibResourceBundle.getResource` STYLE special-case + 4-case
+regression + bootstrap log, `473f55a` T19 partial — δ-A closed via T18 + δ-B
+escalation marker, `7462016` session-log append).
+
+W3D4-δ-A (TextAppearance sentinel) 닫힘 검증 — T18 후 T17 5/5 PASS 전환 + acceptance
+gate fail message shift (δ-A `checkTextAppearance` entry → δ-B
+`checkCompatibleTheme → checkMaterialTheme` entry). plan v3.2 §6.3 의 정확한
+escalation 예측 적중.
+
+본 세션 첫 작업 = W3D4-δ-B **planning** (plan-revision phase). implementation 아님 —
+CLAUDE.md §Codex 의 "1:1 Claude+Codex Pairing — Planning & Plan-Review ONLY" 적용
+대상. round 6 pair-review 진입.
+
+새 fail surface (t19-acceptance-gate-followup.md §2):
+[LayoutlibRenderer] createSession ERROR_INFLATION
+  msg=The style on this component requires your app theme to be Theme.MaterialComponents (or a descendant).
+  exc=IllegalArgumentException
+Caused by: at ThemeEnforcement.checkTheme(247) ← checkMaterialTheme(216) ← checkCompatibleTheme(144) ← obtainStyledAttributes(76) ← MaterialButton.<init>(239)
+
+Trigger 가설 (plan v3.2 §6.3 의 정확한 예측):
+`Widget.MaterialComponents.Button:6349` 가 `enforceMaterialTheme=true` 명시 → M2 path
+진입 시 `checkCompatibleTheme` (te_disasm.txt:90-156) 가
+`Theme.resolveAttribute(R.attr.isMaterialTheme)` 호출 후 false 면
+`checkMaterialTheme(ctx)` (te_disasm.txt:315-327) 호출 → `int[]{R.attr.colorPrimaryVariant}
+hasValue` 검사 → false 면 throw.
+
+3-option closure ladder (`t19-acceptance-gate-followup.md` §5):
+- A. `isMaterialTheme=true` 를 fixture theme chain 에서 expose → `checkCompatibleTheme`
+     first-gate (te_disasm:118-130) 즉시 return → `checkMaterialTheme` 미진입.
+- B. `colorPrimaryVariant` chain resolution 정합 (Lvl 5:2214 또는 Lvl 9:3023 의
+     concrete color) → `checkMaterialTheme` 의 hasValue probe PASS.
+- C. M3 path dispatch (`Widget.Material3.Button` 사용) — `enforceMaterialTheme` 미상속.
+     T17 H3a (`materialButtonStyle → @style/Widget.Material3.Button` PASS) 가 partial
+     증거. M3 path actual dispatch 검증 추가 필요.
+
+세 옵션 중 어느 것이 minimal change & maximum coverage 인가? — round 6 Codex+Claude
+1:1 pair-review 의 핵심 question.
+
+Cold-read 5 docs (handoff-delta-b §3.1 list, 이 순서):
+1. docs/work_log/2026-04-30_w3d4-beta-plumbing/handoff-delta-b.md (본 prompt 의 source)
+2. docs/work_log/2026-04-30_w3d4-beta-plumbing/t19-acceptance-gate-followup.md
+   (δ-A close + δ-B surface 분류 + 3-option ladder)
+3. docs/work_log/2026-04-30_w3d4-beta-plumbing/session-log.md (β/γ/δ 전체
+   progressive escalation 카탈로그, δ-implementation append 포함)
+4. docs/superpowers/specs/2026-05-04-w3d4-delta-textappearance-sentinel-design.md
+   (plan v3.2 — §6.3 escalation 정책 + §11 out-of-scope + 7-attr sentinel census §1.1)
+5. docs/superpowers/plans/2026-04-30-w3d4-gamma-attr-enum-flag.md (γ plan v3.1 —
+   NsBucket type-specific 분리 패턴 background)
+
+진행:
+
+0. 베이스라인 verify
+   - cd server && ./gradlew test --console=plain
+     → BUILD SUCCESSFUL — 241 unit / 0 fail
+   - ./gradlew :layoutlib-worker:test -PincludeTags=integration --console=plain
+     → 19 IT PASS + 2 SKIP (T17 5-probe 5/5 PASS regression guard, δ-B + tier3-glyph SKIP)
+
+1. Investigation — subagent burst (3-stream, 각각 IT + bytecode)
+   - Subagent A: te_disasm.txt:90-156 checkCompatibleTheme bytecode 정밀 분석.
+     first-gate (Theme.resolveAttribute(isMaterialTheme)) vs second-gate
+     (checkMaterialTheme(ctx) → colorPrimaryVariant hasValue). 옵션 A vs C 의
+     separately-actionable 검증.
+   - Subagent B: Theme.AxpFixture chain 안 isMaterialTheme + colorPrimaryVariant
+     resolve 경로 측정. 어느 Lvl 에서 isMaterialTheme=true 정의? Lvl 5:2214 의
+     colorPrimaryVariant chain 이 chain walker 단계에서 valid 하게 resolve 되는가
+     (T17-style probe 가능)? 옵션 A 와 옵션 B 의 chain validity 분류.
+   - Subagent C: BridgeContext defStyleAttr → defStyleRes 의 M2/M3 dispatch 검증.
+     T17 H3a PASS 가 chain walker 측 — actual BridgeContext dispatch 가 M2 vs M3 인지
+     확인. 옵션 C enable 여부.
+
+   각 subagent prompt 에 LM-W3D4-β-G (`unzip --directory /tmp/w3d4db-*`) 명시.
+   결과 → 옵션 A/B/C 의 cost-benefit table.
+
+2. plan v4 작성 (W3D4-δ-B 의 dominant fix 옵션 결정)
+   docs/superpowers/specs/2026-05-XX-w3d4-delta-b-gate-chain-design.md
+   plan v3.2 구조 mirror — §0 Entry context · §1 Empirical findings · §2 Root cause
+   + 옵션 A/B/C cost-benefit · §3 Scope & task split (T20 diagnostic, T21 fix, T22
+   acceptance close) · §4-§5 task spec · §6 Acceptance gate · §7 Q1-Q6 round 6.
+
+3. round 6 Codex+Claude 1:1 pair-review (planning ONLY, CLAUDE.md §Codex)
+   - LM-G 적용: codex 직접 CLI `codex exec --skip-git-repo-check --sandbox
+     danger-full-access` (codex-rescue subagent 미사용; MEMORY.md
+     feedback_codex_sandbox_bypass.md 패턴).
+   - 양쪽 결과 합산 — full convergence / set divergence / order divergence 별 처리.
+   - LM-W3D4-δ-A 적용: plan v4 의 모든 코드 sample 식별자 grep/Read 사전 verify.
+   - 12 deltas 형식 적용 (round 4/5 패턴 동일).
+   - verdict + reconcile after deltas applied → plan v4.x → GO.
+
+4. Implementation (T20/T21/T22, 각 task 단위 commit + push)
+   T20 (diagnostic) → T21 (fix) → T22 (acceptance close). T17 의 5-probe regression
+   guard 가 5/5 PASS 보존 필수. T22 PASS 시 IT 20 PASS + 1 SKIP, 모듈 합산 unit ~245.
+
+CLAUDE.md 규약 준수 (brace own-line, no default params, Zero Tolerance, comments
+보존, Three Hard Rules for Comments — 영문 only, function/structure 만, ticket/PR
+/phase reference 최소화 per Rule 2 OUT-OF-SCOPE 확대). carry-forward LM (handoff-
+delta-b §4 의 16 항목 모두 다음 세션 진입 시 내재화):
+- LM-W3D4-β-D~H (β session carry)
+- LM-W3D4-γ-A~C (γ session carry)
+- LM-W3D4-δ-A: spec 코드 sample 의 모든 식별자 grep 검증 의무
+- LM-W3D4-δ-B: NsBucket type-specific map 분리 KILL POINT — 새 type-specific map
+  추가 시 회귀 위험 (ATTR γ T14 + STYLE δ T18 두 차례 catch)
+- LM-W3D4-δ-C: runtime-classpath.txt 부재 silent empty AAR (W4+ hardening)
+- LM-W3D4-δ-D: IT-tagged RED-on-main 가능 (default unit suite 제외)
+- LM-W3D4-δ-E: acceptance fail surface 의 stack-trace entry-point 비교로 layer shift
+  식별 (δ-A → δ-B 전이 검증 패턴)
+- LM-W3D4-δ-F: CLAUDE.md Rule 2 OUT-OF-SCOPE 확대 — phase/task identifier 도
+  forbidden (KDoc/annotation 모두 structural-only 영문)
+- LM (CLAUDE.md Three Hard Rules for Comments)
+- LM-G: codex sandbox bypass 직접 CLI
+
+진행 후 T22 PASS 시 W3D4 phase 종결 — handoff + session-log 갱신 + W4 entry plan
+(tier3-glyph carry + namespace-aware 모드 검토). T22 fail 시 W3D4-ε escalate
+(R$styleable layer, RJarSymbolSeeder.kt:64-66 skip) — §5.3.1 callback
+instrumentation (axp.debug.callback) 으로 narrow 후 trigger.
+
+LM-G 회피: pair-review 시 codex exec --skip-git-repo-check --sandbox
+danger-full-access 직접 CLI (codex-rescue subagent 미사용). 실 implementation 은
+subagent-driven 가능 (LM-W3D4-β-G unzip --directory /tmp/... 의무).
+
+에이전트팀 구동하고 철저하게 분석 검토하면서 진행해줘.
