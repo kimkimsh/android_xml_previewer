@@ -1,0 +1,104 @@
+W3D4-δ implementation phase entry. W3D4-γ (T14/T15/T16 partial) 완료 + W3D4-δ
+planning (plan v3.2 + round 5 pair-review APPLIED) 완료 — 이전 세션 commit 5 개
+(`4a31731` plan v3.1, `3ca8bb5` T14, `1541958` T15, `83d432a` T16 partial,
+`2478d78` plan v3.2 + round 5). 단 acceptance gate (`activity_basic.xml` SUCCESS)
+는 plan v3 §5.4 escalation 정책 정확히 적중 — fail surface 가 enum/flag 가 아닌
+TextAppearance sentinel 로 shift → tier3-basic-primary `@Disabled` 의 reason
+갱신 (W3D4-δ-A carry).
+
+본 세션 첫 작업 = plan v3.2 의 T17 → T18 → T19 implementation (각 task 단위
+commit + push, CLAUDE.md task-unit completion).
+
+새 fail surface (t16-acceptance-gate-followup.md §1.2):
+[LayoutlibRenderer] createSession ERROR_INFLATION
+  msg=This component requires that you specify a valid TextAppearance attribute.
+      Update your app theme to inherit from Theme.MaterialComponents (or a descendant).
+  exc=IllegalArgumentException
+
+Trigger (subagent A/B/C empirical, plan v3.2 §1.1-§1.3):
+activity_basic.xml:43 의 `<com.google.android.material.button.MaterialButton>`
+constructor offset 53 → ThemeEnforcement.checkTextAppearance probes
+R.styleable.ThemeEnforcement_android_textAppearance (slot 0 alphabetical)
+getResourceId(slot, -1) → -1 → throw.
+
+Dominant root cause 가설 H2 (plan v3.2 §2.2): LayoutlibResourceBundle.getResource
+(STYLE ref) 의 byType-only 경로가 styles map 도달 못 함 (W3D4-γ T14 round 4 Q5
+ATTR special-case 의 STYLE 변종, 자료구조 분리 패턴 동일). chain walker 가 STYLE
+ref hop 단계에서 unresolved StyleItem 그대로 반환 → BridgeContext offset
+312-325 instanceof StyleResourceValue cast fail → defStyleRes M2 fallback → throw.
+
+Cold-read 6 docs (handoff-delta §3.1 list):
+1. docs/work_log/2026-04-30_w3d4-beta-plumbing/handoff-delta.md (본 prompt 의 source)
+2. docs/superpowers/specs/2026-05-04-w3d4-delta-textappearance-sentinel-design.md
+   (plan v3.2 — T17/T18/T19 explicit code/diff, round 5 12 deltas inline)
+3. docs/work_log/2026-04-30_w3d4-beta-plumbing/round5-pair-review.md (round 5 verdict)
+4. docs/work_log/2026-04-30_w3d4-beta-plumbing/t16-acceptance-gate-followup.md
+   (W3D4-δ-A surface 발견 시점)
+5. docs/work_log/2026-04-30_w3d4-beta-plumbing/session-log.md (β/γ/δ planning 산출 + LM δ-A~D)
+6. docs/superpowers/plans/2026-04-30-w3d4-gamma-attr-enum-flag.md (γ plan v3.1 — STYLE
+   변종의 ATTR 패턴 background)
+
+진행:
+1. 베이스라인 verify
+   - cd server && ./gradlew test --console=plain
+     → BUILD SUCCESSFUL — 237 unit / 0 fail
+   - ./gradlew :layoutlib-worker:test -PincludeTags=integration --console=plain
+     → 14 IT PASS + 2 SKIP
+
+2. T17 — Diagnostic 5-question battery (plan v3.2 §4.1, IT-tagged)
+   신규 W3D4DeltaThemeChainDiagnosticTest.kt — plan v3.2 §4.1 의 코드 그대로
+   (round 5 Q4 fix 적용 후 compile 가능). Args.sampleAppRoot (NOT
+   sampleAppModuleRoot — round 5 KILL POINT). MaterialFidelityIntegrationTest:123-144
+   의 locate() Pair<Path, Path>? 패턴 직접 mirror.
+
+   5 question: H1 (Lvl 5 reachable) · H2 (getResource STYLE ref) · H3a
+   (findItemInTheme materialButtonStyle) · H3b (findItemInTheme
+   textAppearanceButton) · H2-bridgeTypedArray-gate (resolveResValue StyleItem
+   → is StyleResourceValue).
+
+   PASS/FAIL 패턴이 plan v3.2 §5.6 결정 매트릭스에 mapped — T18 fix 범위 즉시 결정.
+   commit 1: T17 신규 (RED-on-main 가능, default unit suite 제외 via
+   axp.kotlin-common.gradle.kts:43-50, LM-W3D4-δ-D 인계).
+
+3. T18 — H2 fix (plan v3.2 §5.1) 적용
+   3-line 변경 LayoutlibResourceBundle.getResource (STYLE special-case 추가) +
+   회귀 테스트 LayoutlibResourceBundleStyleLookupTest.kt 신규 4 cases. §5.5 의
+   bootstrap one-shot summary log (DEBUG_BUNDLE_SHAPE gated) 도 본 commit 포함 가능.
+
+   H2 의 coverage 는 item discovery 후의 STYLE-ref hop 만 (round 5 Q5 conditional
+   framing). T17 재측정 시 H2 + H2-bridgeTypedArray-gate 둘 다 PASS 로 전환 필수.
+
+   T17 의 H3a/H3b FAIL 시 §5.2 walkParent fallback 별도 commit (서로 다른
+   hypothesis = 별도 task unit).
+   commit 2: T18 H2 KILL POINT fix.
+
+4. T19 — Acceptance gate close
+   LayoutlibRendererIntegrationTest.kt 의 `tier3 basic primary` `@Disabled`
+   제거 → IT 1회 실행. PASS 시 W3D4-δ-A close, fail 시 §6.3 escalation:
+   - W3D4-δ-B: enforceMaterialTheme → checkMaterialTheme → colorPrimaryVariant gate chain
+   - W3D4-ε: R$styleable layer (RJarSymbolSeeder.kt:64-66 skip) — §5.3.1
+     instrumentation (axp.debug.callback) 으로 narrow 후 trigger
+   commit 3: T19 acceptance gate close (또는 fail surface 분류 후 escalate plan).
+
+CLAUDE.md 규약 준수 (brace own-line, no default params, Zero Tolerance, comments
+보존, Three Hard Rules for Comments — 영문 only, function/structure 만, ticket
+reference 최소화). carry-forward LM (handoff-delta §4 의 13 항목 모두 다음 세션
+진입 시 내재화):
+- LM-W3D4-β-D~H (β session carry)
+- LM-W3D4-γ-A~C (γ session carry)
+- LM-W3D4-δ-A: spec 코드 sample 의 모든 식별자 grep 검증 의무 — round 5 의
+  PathLocator/sampleAppModuleRoot fabrication 양쪽 catch
+- LM-W3D4-δ-B: NsBucket byType ↔ styles ↔ attrs 분리 = type 별 sibling KILL
+  POINT (γ T14 ATTR / δ T18 STYLE — 두 차례 catch)
+- LM-W3D4-δ-C: LayoutlibResourceValueLoader runtime-classpath.txt 부재 시
+  silent empty AAR list → false-PASS 위험 (W4+ hardening)
+- LM-W3D4-δ-D: T17 RED-on-main 가능 (IT-tagged 의도된 결정)
+- LM (CLAUDE.md Three Hard Rules)
+
+진행 후 T19 PASS 시 W3D4 phase 종결 — handoff + session-log 갱신 + W4 entry plan
+(tier3-glyph carry + namespace-aware 모드 검토). T19 fail 시 W3D4-δ-B escalate
+spec v3.3 작성 (round 6 pair-review).
+
+LM-G 회피: pair-review 시 codex exec --skip-git-repo-check --sandbox
+danger-full-access 직접 CLI (codex-rescue subagent 미사용). 실 implementation 은
+subagent-driven 가능 (LM-W3D4-β-G unzip --directory /tmp/... 의무).
