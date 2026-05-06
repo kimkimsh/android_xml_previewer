@@ -285,3 +285,55 @@ W3D4-β/γ + δ-planning + δ-implementation 의 모든 LM 통합 — 다음 세
 - `2ce640a` — `feat(w3d4-delta): T17 theme chain diagnostic battery (5-probe IT)` (신규 W3D4DeltaThemeChainDiagnosticTest.kt, RED-on-main intentional).
 - `22f7077` — `feat(w3d4-delta): T18 LayoutlibResourceBundle.getResource STYLE special-case (H2 KILL POINT fix)` (3-line fix + bootstrap log + 4-case regression test). T17 5/5 PASS 전환.
 - `473f55a` — `feat(w3d4-delta): T19 partial — TextAppearance sentinel layer closed via T18, gate-chain surface escalates` (`@Disabled` reason 갱신 to δ-B + t19-acceptance-gate-followup.md).
+
+---
+
+## W3D4-δ-B planning session append (2026-05-06)
+
+### W3D4-δ-B Outcome (planning phase only — implementation 미진입)
+
+W3D4-δ implementation phase (T17/T18/T19) 직후 W3D4-δ-B planning entry. 3-stream subagent burst (TE bytecode / fixture chain / BridgeContext dispatch) 로 옵션 A/B/C cost-benefit 도출 → plan v4 draft → round 6 Codex+Claude pair-review (REVISE 0.84 + GO_WITH_FIXES 0.86) → 12 deltas inline → plan v4.1 GO. T20/T21/T22 implementation 은 다음 세션 entry.
+
+### W3D4-δ-B planning artefacts
+
+#### docs
+- `docs/superpowers/specs/2026-05-06-w3d4-delta-b-gate-chain-design.md` (신규) — plan v4.1, round 6 reconcile 의 12 deltas inline. T20 (5-probe gate-chain diagnostic IT) → T21 (fixture themes.xml 1-line `<item name="colorPrimaryVariant">?attr/colorPrimary</item>`) → T22 (acceptance gate close).
+- `docs/work_log/2026-04-30_w3d4-beta-plumbing/round6-pair-review.md` (신규) — Codex+Claude round 6 verdict + 12 deltas + 3 KILLPOINTS resolution + LM-W3D4-δ-G 신규.
+
+### W3D4-δ-B 옵션 결정 — 옵션 B (colorPrimaryVariant)
+
+3 옵션 cost-benefit:
+- **옵션 A** (`isMaterialTheme=true` 1-line) — gate skip, semantic loose, side-effect medium-low (round 6 Q4: ThemeEnforcement.class 외 colorPrimaryVariant direct reader 0).
+- **옵션 B** (`colorPrimaryVariant=?attr/colorPrimary` 1-line) — gate PASS, semantic strict, future-proof. **dominant**.
+- **옵션 C** (M3 path dispatch) — closed (Widget.Material3.Button 도 부모 Widget.MaterialComponents.Button:6349 의 enforceMaterialTheme=true 상속).
+
+옵션 B 의 enable mechanism: Codex+Claude convergent BridgeContext bytecode trace — `Resources.Theme.obtainStyledAttributes(int[])` → `Resources_Theme_Delegate.internalObtainStyledAttributes` → `BridgeContext.createStyleBasedTypedArray(style=null)` → **`mRenderResources.findItemInTheme`** (LayoutlibRenderResources.kt:211-221) → `bridgeSetValue` → `BridgeTypedArray.hasValue(slot)` returns `mResourceData[slot] != null`. fixture-side 직접 정의 → chain walker 의 first-match → BridgeContext.hasValue=true.
+
+### W3D4-δ-B pair-review verdict
+
+- **Round 6** (planning-phase Codex+Claude pair, 2026-05-06): Codex REVISE 0.84 + Claude GO_WITH_FIXES 0.86 → APPLIED (12/12 deltas inline). 가장 강한 convergence: Q1 (BridgeContext path trace) + Q4 (colorPrimaryVariant direct reader census). 가장 강한 divergence: Q3 (BridgeContext-side P6/P7 vs P2+P3 equivalence) — equivalence note + setupResources caveat 으로 union 적용. KILLPOINTS 3건 (Codex) 직접 verify 후 inline 정정 (judge round 불필요, memory feedback_pair_review_codex_killpoint.md 패턴).
+
+### W3D4-δ-B 신규 LM (round 6 산출)
+
+| LM | 내용 | 후속 |
+|---|---|---|
+| LM-W3D4-δ-G | annotation message (e.g. `@Disabled` reason) 안 future option 의 *technical claim* 작성 시 file:line evidence 사전 verify 의무 | round 6 의 T19 `@Disabled` stale text catch ("M3 path 가 enforceMaterialTheme=false 로 SKIP" — 실제 Widget.Material3.Button 본체 override 부재, true 상속) 가 trigger. plan v4 §6.1 의 T22 가 본 stale @Disabled 제거하므로 자동 close. future annotation 작성 시 동일 LM 적용 |
+
+### What's blocking / carried forward
+
+#### W3D4-δ-B implementation (다음 세션)
+1. **T20** — `W3D4DeltaBGateChainProbeTest.kt` 신규 (IT-tagged, 5-probe). spec §4.1 의 완전 코드 (round 6 Q1 equivalence note + LM-W3D4-δ-A self-check 적용 후 compile 가능 상태).
+2. **T21** — fixture `themes.xml` 의 `Theme.AxpFixture` 에 1-line 추가. T20 P2/P3 의 PASS 전환 검증.
+3. **T22** — `tier3-basic-primary` `@Disabled` 제거 + IT 측정. PASS 시 W3D4-δ phase 종결 (δ-A + δ-B 양쪽 sentinel layer closed).
+
+#### Out-of-scope (carry)
+- **W3D4-ε** — R$styleable seeder gap (RJarSymbolSeeder.kt:64-66). T22 fail 시 escalate.
+- **theme overlay support** — `materialThemeOverlay` chain walker 처리. future widget surface.
+- **direct-sentinel widget surface** — BadgeDrawable + BaseTransientBottomBar 직접 호출 (round 6 Q4 evidence). 현 fixture 부재.
+- **W3D4 tier3-glyph** (W4 carry).
+
+### W3D4-δ-B commits + push (planning only)
+
+- (다음 commit) `docs(w3d4-delta-b): plan v4.1 + round 6 pair-review (REVISE+GO_WITH_FIXES → APPLIED → GO)` — 본 session-log append + plan v4.1 + round6-pair-review.md.
+
+T20/T21/T22 의 implementation commit 은 별도 session 진입 시 수행.
