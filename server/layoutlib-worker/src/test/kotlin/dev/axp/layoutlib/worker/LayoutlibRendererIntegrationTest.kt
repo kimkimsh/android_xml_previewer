@@ -37,23 +37,18 @@ class LayoutlibRendererIntegrationTest
     }
 
     @org.junit.jupiter.api.Disabled(
-        "MaterialButton.<init> still throws \"The style on this component requires your app " +
-            "theme to be Theme.MaterialComponents (or a descendant).\" via ThemeEnforcement." +
-            "checkCompatibleTheme → checkMaterialTheme even after the fixture defines " +
-            "colorPrimary, colorPrimaryContainer, and colorPrimaryVariant. The chain-walker " +
-            "layer is coherent (5-probe diagnostic passes for findItemInTheme + " +
-            "resolveResValue on every fixture attr), but the layoutlib render path runs " +
-            "Resources_Theme_Delegate.setupResources before BridgeContext." +
-            "internalObtainStyledAttributes(0, attrs) — that helper resolves the Theme's " +
-            "ThemeKey.mResId numeric style ids and pushes them onto BridgeContext's " +
-            "RenderResources via applyStyle, mutating the active theme stack independently " +
-            "of LayoutlibRenderResources.mThemeStack. The render-time warning \"Failed to " +
-            "find '@attr/textAppearanceButton' in current theme.\" is the direct evidence: " +
-            "an attr the unit/IT chain walker resolves becomes invisible after " +
-            "setupResources runs. Closing this gate requires either making " +
-            "LayoutlibRenderResources.applyStyle preserve the fixture chain when layoutlib " +
-            "pushes additional ids, or wiring resolveStyle(int) through the callback so " +
-            "the same StyleResourceValue instances flow into the active stack.",
+        "MaterialButton.<init> reaches View.<init> at offset 6033 and inflates the " +
+            "stateListAnimator referenced by Widget.Material3.Button " +
+            "(@animator/m3_btn_state_list_anim). AnimatorInflater.loadStateListAnimator " +
+            "calls callback.getParser for the animator XML resource, but the bundle and " +
+            "callback only currently feed values/* and res/color/* through " +
+            "AarResourceWalker — animator XML body is not loaded, so the parser receives " +
+            "no input and throws XmlPullParserException(\"No Input specified " +
+            "(position:START_DOCUMENT null@0:0)\"). Closing this gate requires extending " +
+            "AarResourceWalker to enumerate res/animator/*.xml, registering raw bodies " +
+            "alongside ColorStateList in NsBucket, and routing ResourceType.ANIMATOR " +
+            "through MinimalLayoutlibCallback.getParser the same way ColorStateList is " +
+            "routed today.",
     )
     @Test
     fun `tier3 basic primary — activity_basic 가 직접 SUCCESS`()

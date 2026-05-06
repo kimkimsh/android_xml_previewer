@@ -128,3 +128,39 @@ private static boolean setupResources(android.content.res.Resources$Theme theme)
 ### carry-forward LM
 - LM-W3D4-δ-A~G (모두 carry).
 - T22 의 setupResources mutation layer 분석 → LM-W3D4-δ-H 신규 가능성 (chain-walker 검증과 render-time 검증의 분리 — IT 에서는 chain walker 만 측정, render path 는 별도 instrumentation 필요).
+
+---
+
+## §8 follow-up (2026-05-06, applyStyle preserve fix 적용 후)
+
+### §8.1 Outcome — δ-A + δ-B 양쪽 closed, 새 surface 는 animator XML feed layer
+
+`LayoutlibRenderResources.applyStyle` 의 `useAsPrimary` clear() 제거 → fixture parent chain 보존.
+
+T22 재측정 결과:
+- 이전 fail: `IllegalArgumentException: The style on this component requires your app theme to be Theme.MaterialComponents (or a descendant)` (ThemeEnforcement.checkMaterialTheme)
+- 새 fail: `XmlPullParserException: No Input specified (position:START_DOCUMENT null@0:0)` from `AnimatorInflater.loadStateListAnimator(AnimatorInflater.java:189)` ← `View.<init>(View.java:6033)` ← `MaterialButton.<init>`
+
+**δ-A (TextAppearance) + δ-B (gate-chain) 양쪽 closed** ✓ — `Failed to find '@attr/textAppearanceButton' in current theme` warning 사라짐, ThemeEnforcement throw 제거.
+
+### §8.2 새 surface — animator XML feed mechanism 부재
+
+`Widget.Material3.Button:5250` 의 `<item name="android:stateListAnimator" ns1:ignore="NewApi">@animator/m3_btn_state_list_anim</item>` 가 trigger. Material AAR `res/animator/m3_btn_state_list_anim.xml` 의 raw XML body 가:
+- `LayoutlibResourceValueLoader` / `AarResourceWalker` 의 처리 surface 외 (현 walker 가 `res/values/values.xml` + `res/color/*.xml` 만 enumerate, T12 이전 phase 의 surface).
+- `MinimalLayoutlibCallback.getParser` (line 116-131) 의 `ResourceType.COLOR` 만 accept, `ResourceType.ANIMATOR` fall-through null 반환.
+- 결과: layoutlib `AnimatorInflater.loadStateListAnimator` 의 `XmlResourceParser parser = res.getAnimator(id)` path 에서 input 없이 parse → throw.
+
+본 surface 는 **W3D4-δ-D (animator XML feed)** 또는 **W3D4 tier3-glyph 와 동시 처리** (W4 carry):
+- 옵션 D-1: AarResourceWalker 에 `res/animator/` enumeration 추가 (T12 의 `res/color/` 패턴 mirror) + NsBucket 에 animator map 신규 + callback.getParser 의 ResourceType.ANIMATOR routing.
+- 옵션 D-2: 빈 animator XML stub 으로 우회 (ProgressDialog/Dialog-style fallback) — visual fidelity 손실 가능.
+
+### §8.3 closed milestone
+
+본 commit (`applyStyle` preserve fixture chain) 이 W3D4-δ 시리즈의 Material gate-chain 의 close — γ enum/flag → δ-A TextAppearance → δ-B gate-chain 의 progressive escalation chain 종착. ThemeEnforcement 의 sentinel attr 검사 모두 우회 또는 통과.
+
+Test posture:
+- 모듈 합산 unit: 241 PASS (변동 없음)
+- IT: 24 PASS + 2 SKIP (T17 5/5 + T20 5/5 + tier3-basic-primary `@Disabled` (animator surface) + tier3-glyph W4 carry)
+- δ-A closed, δ-B closed, animator surface escalation 명시.
+
+LM-W3D4-δ-I (신규) — `applyStyle(useAsPrimary)` 의 layoutlib runtime semantic: `Resources_Theme_Delegate.setupResources` 가 force=true 로 호출하지만 *기존 stack wipe 의도가 아닌 head-priority 갱신*. RenderResources subclass 의 `applyStyle` 구현 시 `clear()` 호출하면 fixture/computeInitialStack 결과 wipe — chain walker 와 render-time stack divergence 의 root cause. future RenderResources subclass 작성 시 동일 LM 적용.

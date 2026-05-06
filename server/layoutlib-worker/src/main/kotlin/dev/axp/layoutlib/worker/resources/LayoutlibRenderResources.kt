@@ -221,16 +221,17 @@ internal class LayoutlibRenderResources(
         return null
     }
 
+    /**
+     * Always push the style to the head and dedupe — never clear the stack. layoutlib's
+     * Resources_Theme_Delegate.setupResources iterates Theme.mResId and calls
+     * applyStyle(style, force=true) for each entry; clearing on useAsPrimary would wipe
+     * the fixture parent chain assembled by computeInitialStack(), leaving the freshly
+     * applied ThemeOverlay (parent="") with no walkable chain.
+     */
     override fun applyStyle(style: StyleResourceValue, useAsPrimary: Boolean)
     {
-        if (useAsPrimary)
-        {
-            mThemeStack.clear()
-        }
-        if (!mThemeStack.contains(style))
-        {
-            mThemeStack.add(0, style)
-        }
+        mThemeStack.remove(style)
+        mThemeStack.add(0, style)
     }
 
     override fun clearStyles()
