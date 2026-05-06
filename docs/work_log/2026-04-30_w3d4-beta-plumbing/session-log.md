@@ -404,3 +404,76 @@ LM-W3D4-β-D~H + LM-W3D4-γ-A~C + LM-W3D4-δ-A~G + **LM-W3D4-δ-H (신규)** + L
 - `f7fb4d5` — `feat(w3d4-delta-b): T20 gate-chain probe IT (5-probe colorPrimaryVariant chain diagnostic)` (W3D4DeltaBGateChainProbeTest.kt 신규, 5/5 PASS in current state).
 - `2175eb1` — `feat(w3d4-delta-b): T21 fixture colorPrimaryVariant 1-line — checkMaterialTheme.hasValue gate close` (themes.xml 1-line, chain shortening 효과 검증).
 - `f05d6a6` — `feat(w3d4-delta-b): T22 partial — option B applied at chain-walker layer, render-time gate persists at setupResources mutation layer` (`@Disabled` reason 갱신 + t22-acceptance-gate-followup.md).
+
+---
+
+## W3D4 phase 종결 (2026-05-06, δ-C + δ-D 후 acceptance gate close)
+
+### Outcome — activity_basic 직접 SUCCESS, IT 25 PASS + 1 SKIP
+
+W3D4-δ-B implementation 의 setupResources mutation layer (Codex round 6 Q1 caveat) 가 `LayoutlibRenderResources.applyStyle` 의 useAsPrimary clear() 동작 — fixture chain 전체 wipe. fix: head-push + dedupe (no clear). 적용 후 fail surface 가 ThemeEnforcement layer 에서 *완전 escape*, animator XML feed 부재로 escalation. δ-D 가 T12 ColorStateList feed 의 ANIMATOR mirror — AarResourceWalker `res/animator/` enumeration + NsBucket animators map + callback.getParser ResourceType.ANIMATOR routing.
+
+T22 acceptance gate PASS — `tier3 basic primary — activity_basic 가 직접 SUCCESS` 가 25 IT PASS + 1 SKIP (tier3-glyph W4 carry only) 의 plan v4.1 §6.2 acceptance 예측 정확히 적중.
+
+### W3D4 phase escalation chain (γ → δ-A → δ-B → δ-C → δ-D 순차)
+
+| phase | layer | fix | commit |
+|---|---|---|---|
+| γ | enum/flag attr capture | T14 RES_AUTO ATTR special-case + T15 framework Bridge.init | `3ca8bb5` `1541958` |
+| δ-A | TextAppearance sentinel (`bundle.getResource STYLE` 누락) | T18 STYLE special-case sibling to ATTR | `22f7077` |
+| δ-B | gate chain `enforceMaterialTheme → checkMaterialTheme → colorPrimaryVariant.hasValue` | T21 fixture `colorPrimaryVariant=?attr/colorPrimary` 1-line | `2175eb1` |
+| δ-C | setupResources mutation (`applyStyle clear() wipe fixture chain`) | head-push + dedupe (no clear) | `654a70e` |
+| δ-D | animator XML feed (Material AAR `res/animator/` 미enumerate) | T12 ColorStateList pattern mirror | `79d7dc1` |
+
+### W3D4 commits + push (W3D4-β/γ/δ implementation 합산)
+
+W3D4-β: `e83d75d` T11 + `4acb571` T12 + `10ed4f3` T13 partial + `0ea4f8c` session-log
+W3D4-γ: `4a31771` plan v3.1 + `3ca8bb5` T14 + `1541958` T15 + `83d432a` T16 partial
+W3D4-δ planning: `2478d78` plan v3.2 + round 5 + `61c761d` handoff-delta
+W3D4-δ implementation: `2ce640a` T17 + `22f7077` T18 + `473f55a` T19 partial + `7462016` session-log
+W3D4-δ-B planning: `db17bfe` handoff-delta-b + `c8f835f` plan v4.1 + round 6 + `7fa4bd7` handoff-delta-b-impl
+W3D4-δ-B impl: `f7fb4d5` T20 + `2175eb1` T21 + `f05d6a6` T22 partial + `ffca7cd` session-log
+W3D4-δ-C/δ-D close: `654a70e` δ-C applyStyle preserve + `79d7dc1` δ-D animator feed mirror
+
+### Test posture (W3D4 phase 종료 시)
+
+| 측정 | β baseline | W3D4 종료 |
+|---|---|---|
+| 모듈 합산 unit | 215 PASS | **241 PASS** (+26 across γ/δ/δ-B regression guards) |
+| layoutlib-worker IT | 12 PASS + 2 SKIP | **25 PASS + 1 SKIP** (tier3-glyph W4 carry only) |
+| acceptance gate `activity_basic` SUCCESS | δ-A `@Disabled` | **PASS** ✓ |
+| T17 + T20 regression guards | n/a | 5/5 + 5/5 PASS ✓ |
+
+### W3D4 phase 신규 LM (combined 19)
+
+LM-W3D4-β-D~H + LM-W3D4-γ-A~C + LM-W3D4-δ-A~G + LM-W3D4-δ-H + **LM-W3D4-δ-I (신규)**:
+
+| LM | 내용 |
+|---|---|
+| LM-W3D4-δ-I | `RenderResources.applyStyle(useAsPrimary)` override 시 layoutlib runtime semantic — `Resources_Theme_Delegate.setupResources` 가 force=true 로 호출하지만 *기존 stack wipe 의도가 아닌 head-priority 갱신*. clear() 호출하면 computeInitialStack 결과 wipe — chain walker 와 render-time stack divergence 의 root cause. RenderResources subclass 작성 시 dedupe + head-push 만 사용. |
+
+### W4 carry-forward (다음 phase)
+
+#### tier3-glyph (Font wiring)
+- 현 SKIP 1건. fixture/sample-app 의 font resource (e.g. Material RobotoCondensed) 가 layoutlib 측 fonts/ 에 매핑 안 됨. AarResourceWalker 가 `res/font/*.xml` 또는 `res/font/*.ttf` enumeration 추가 필요 (T12 / δ-D 패턴 추가 mirror).
+
+#### namespace-aware mode 검토
+- 현재 RES_AUTO bucket 단일 collapse 정책. cross-AAR 동명 attr/style 의 명시 namespace 분리 가능성 (W4+ scope).
+
+#### DRAWABLE selector XML feed
+- plan v3 §5.4 T12.5 escalation 미진입. drawable selector XML body feed — `res/drawable/*.xml` enumeration + callback.getParser ResourceType.DRAWABLE routing (δ-D 패턴 mirror). 현 fixture 의 activity_basic 에 drawable selector 미사용 — escalation deferred.
+
+### W3D4 phase pair-review verdict (combined)
+
+- Round 1-3 (β planning): plan v1 → v3 (Codex+Claude convergent). T11/T12 plumbing GO.
+- Round 4 (γ planning): GO_WITH_FIXES → APPLIED. RES_AUTO ATTR special-case kill point (Codex Q5).
+- Round 5 (δ planning): GO_WITH_FIXES → APPLIED. STYLE special-case kill point + 12 deltas inline.
+- Round 6 (δ-B planning): REVISE + GO_WITH_FIXES → APPLIED. Q1 setupResources caveat 가 본 phase 의 δ-C root cause 정확 예측.
+- Round 7 (δ-C/δ-D implementation): pair-review 미dispatch — empirical T22 PASS 가 ground-truth verifier.
+
+### W3D4 phase 완료 commit + push
+
+- `79d7dc1` — `feat(w3d4-delta-d): animator XML feed mirror — W3D4 phase closed (activity_basic SUCCESS)` (13 files changed, 126 insertions, 41 deletions).
+- 본 session-log append.
+
+다음 entry = W4 (tier3-glyph + namespace-aware mode 검토).
