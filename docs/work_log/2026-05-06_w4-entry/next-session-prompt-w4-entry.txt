@@ -1,0 +1,103 @@
+W4 phase entry. W3D4 phase 완전 종결 + W4 entry tier3-glyph close — 직전 session
+commit 4 개 (`654a70e` δ-C applyStyle preserve, `79d7dc1` δ-D animator XML feed,
+`f315192` W3D4 close session-log, `9ea2afd` tier3-glyph un-disable).
+
+본 세션 첫 작업 = **W4 phase scope decision** (사용자 priority 결정 필요). 현
+시점 모든 active surface closed: IT 26 PASS + 0 SKIP, unit 241 PASS, T17 + T20
+regression guards 5/5 + 5/5 PASS, activity_basic + activity_minimal 모두 SUCCESS.
+
+5-phase escalation chain 의 종결 (γ → δ-A → δ-B → δ-C → δ-D):
+- γ enum/flag attr capture (T14/T15)
+- δ-A TextAppearance sentinel (T18 STYLE special-case)
+- δ-B gate chain (T21 fixture colorPrimaryVariant 1-line)
+- δ-C setupResources mutation (applyStyle clear() 제거 — head-push + dedupe)
+- δ-D animator XML feed (T12 ColorStateList pattern mirror to ANIMATOR)
+
+W4 candidates (handoff-w4-entry.md §2 상세):
+
+A. DRAWABLE selector XML feed (mirror, speculative — trigger 없음, hold 권장)
+B. widget fixture 확장 (Snackbar/Chip/TextInputLayout/Badge — 새 escalation chain
+   가능성, depth unknown). visual fidelity 확장 priority 시 here.
+C. namespace-aware mode (RES_AUTO collapse → ns 분리 — 큰 design, Round 7
+   Codex+Claude planning pair-review 필수). design 정합 priority 시.
+D. runtime-classpath.txt 부재 hardening (LM-W3D4-δ-C — silent empty AAR false-PASS
+   회피 — low cost, 1 commit). production hardening priority 시.
+E. W3D4-ε R$styleable layer (active trigger 없음 — hold).
+
+Cold-read 4 docs (handoff-w4-entry.md §3.1 list, 이 순서):
+1. docs/work_log/2026-05-06_w4-entry/handoff-w4-entry.md (본 prompt 의 source)
+2. docs/work_log/2026-04-30_w3d4-beta-plumbing/session-log.md (W3D4 phase 전체
+   progressive escalation 카탈로그 — background)
+3. docs/superpowers/specs/2026-05-06-w3d4-delta-b-gate-chain-design.md (plan v4.1
+   — δ-D mirror pattern reference)
+4. docs/work_log/2026-04-30_w3d4-beta-plumbing/round6-pair-review.md (Codex+Claude
+   round 6 — δ-C root cause caveat 패턴, future round 진입 시 reference)
+
+진행:
+
+0. 베이스라인 verify
+   - cd server && ./gradlew test --console=plain
+     → BUILD SUCCESSFUL — 241 unit / 0 fail
+   - ./gradlew :layoutlib-worker:test -PincludeTags=integration --console=plain
+     → 26 IT PASS + 0 SKIP
+
+1. W4 scope decision — 사용자 priority align
+   - 사용자에게 candidate A/B/C/D/E 중 priority 명시 요청 OR 명시된 priority
+     기반 자동 dispatch
+   - 결정된 candidate 의 phase entry 진입
+
+2-A. candidate D (production hardening — 최소 비용 path 권장)
+   - LayoutlibResourceValueLoader.kt:42-44 의 silent empty AAR fallback 을 명시
+     warn 또는 throw 로 변경
+   - T17/T20 의 graceful skip (assumeTrue) 패턴 영향 검증 — assumeTrue path 유지
+     필요 (production 만 throw, IT 는 graceful skip)
+   - 변경 후 unit + IT 재측정 → 26 PASS 유지
+   - 1 commit close
+
+2-B. candidate B (widget fixture 확장)
+   - 새 fixture XML 신규 (e.g. activity_snackbar.xml 또는 activity_extended.xml)
+     — Snackbar / Chip / TextInputLayout 추가
+   - LayoutlibRendererIntegrationTest 신규 IT 추가 — 측정 후 fail surface 분류
+     (LM-W3D4-β-H + δ-E entry-point comparison 적용)
+   - fail 시 새 escalation chain 진입 가능성 (depth unknown — plan v6 + Round 7
+     pair-review 가능성)
+
+2-C. candidate C (namespace-aware mode — 큰 design)
+   - plan v6 design 작성 (docs/superpowers/specs/2026-05-XX-w4-namespace-aware.md)
+     — RES_AUTO collapse → ns 분리 mechanism
+   - Round 7 Codex+Claude pair-review (planning ONLY, LM-G direct CLI:
+     codex exec --skip-git-repo-check --sandbox danger-full-access)
+   - 12 deltas inline → plan v6.x → GO
+   - Implementation: RJarSymbolSeeder + AarResourceWalker + LayoutlibResourceBundle
+     ns-aware refactor
+   - T17 + T20 regression guard 5/5 + 5/5 보장 필수
+
+3. 본 phase commit + push (CLAUDE.md task-unit completion)
+
+CLAUDE.md 규약 준수 (brace own-line, no default params, Zero Tolerance, comments
+보존, Three Hard Rules for Comments — 영문 only, function/structure 만, ticket/PR
+/phase reference 최소화 per Rule 2 OUT-OF-SCOPE 확대). carry-forward LM (handoff-
+w4-entry §4 의 19 항목 모두 다음 세션 진입 시 내재화):
+- LM-W3D4-β-D~H (β session carry)
+- LM-W3D4-γ-A~C (γ session carry)
+- LM-W3D4-δ-A~G (δ planning + δ-B planning 산출)
+- LM-W3D4-δ-H (chain-walker IT PASS ≠ render-time PASS — setupResources mutation
+  layer 별도 검증)
+- LM-W3D4-δ-I (RenderResources.applyStyle override 시 clear() 호출 금지 — head-push
+  + dedupe만; setupResources 의 force=true 는 *head-priority 갱신* 의도)
+- LM (CLAUDE.md Three Hard Rules for Comments)
+- LM-G (codex sandbox bypass — planning phase 에만 적용)
+
+본 phase 의 pair-review 적용:
+- candidate D (hardening): pair-review 미요구 (implementation phase, 작은 변경)
+- candidate B (fixture 확장): fail surface 발견 시 plan v6 작성 → Round 7 pair-review
+- candidate C (namespace-aware): plan v6 작성 → Round 7 pair-review 필수
+
+LM-G (codex sandbox bypass 직접 CLI) — planning phase 진입 시에만 적용. 실
+implementation 은 subagent-driven 가능 (LM-W3D4-β-G unzip --directory /tmp/w4-*
+의무).
+
+진행 후 candidate close 시 W4 cluster 의 session-log append + (필요 시) 다음
+candidate 또는 새 phase 의 handoff/prompt 작성.
+
+에이전트팀 구동하고 각종 스킬들 사용해서 철저히 분석 검토하면서 진행해줘.
