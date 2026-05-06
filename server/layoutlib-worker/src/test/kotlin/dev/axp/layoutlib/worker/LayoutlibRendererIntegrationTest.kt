@@ -37,16 +37,14 @@ class LayoutlibRendererIntegrationTest
     }
 
     @org.junit.jupiter.api.Disabled(
-        "W3D4-δ carry: T14 + T15 (W3D4-γ-A enum/flag capture, both RES_AUTO + framework paths) 적용 후 " +
-            "이전 \"vertical / center_horizontal / parent is not a valid integer\" warning 3건 모두 closed " +
-            "(γ-A.1 framework Bridge.sEnumValueMap + γ-A.2 RES_AUTO AttrResourceValueImpl + LayoutlibResourceBundle.getResource ATTR special-case). " +
-            "그러나 acceptance gate fail surface 가 또 한 layer shift — createSession result: " +
-            "ERROR_INFLATION msg=\"This component requires that you specify a valid TextAppearance attribute. " +
-            "Update your app theme to inherit from Theme.MaterialComponents (or a descendant).\" 발화. " +
-            "Material ThemeEnforcement 가 colorPrimary 외 다른 sentinel attr (TextAppearance 계열) 도 검사 — " +
-            "Theme.AxpFixture parent chain 또는 Material AAR 의 styleable 정의 다음 layer. " +
-            "W3D4-δ (TextAppearance sentinel attr 분석 + ThemeEnforcement 의 multi-sentinel check 대응) 후 @Disabled 제거. " +
-            "plan v3.1 §5.3 escalation 정책 정확히 적중 (LM-W3D4-β-H).",
+        "MaterialButton.<init> throws \"The style on this component requires your app theme " +
+            "to be Theme.MaterialComponents (or a descendant).\" via ThemeEnforcement." +
+            "checkCompatibleTheme → checkMaterialTheme. Closing this gate requires either " +
+            "exposing isMaterialTheme=true on the fixture theme chain to short-circuit " +
+            "checkCompatibleTheme, or wiring colorPrimaryVariant chain resolution so " +
+            "checkMaterialTheme's hasValue probe succeeds, or routing MaterialButton " +
+            "through the M3 path (Widget.Material3.Button) so enforceMaterialTheme=false " +
+            "skips the gate entirely.",
     )
     @Test
     fun `tier3 basic primary — activity_basic 가 직접 SUCCESS`()
