@@ -35,6 +35,7 @@ class MinimalLayoutlibCallback(
     private val viewClassLoaderProvider: () -> ClassLoader,
     private val initializer: ((ResourceReference, Int) -> Unit) -> Unit,
     private val colorStateListLookup: (ResourceReference) -> String?,
+    private val animatorXmlLookup: (ResourceReference) -> String?,
 ) : LayoutlibCallback() {
 
     private val nextId = AtomicInteger(FIRST_ID)
@@ -119,15 +120,24 @@ class MinimalLayoutlibCallback(
         {
             return null
         }
-        if (layoutResource.resourceType != ResourceType.COLOR)
-        {
-            return null
-        }
         val ns = layoutResource.namespace ?: return null
         val name = layoutResource.name ?: return null
-        val ref = ResourceReference(ns, ResourceType.COLOR, name)
-        val rawXml = colorStateListLookup(ref) ?: return null
-        return SelectorXmlPullParser.fromString(rawXml)
+        return when (layoutResource.resourceType)
+        {
+            ResourceType.COLOR ->
+            {
+                val ref = ResourceReference(ns, ResourceType.COLOR, name)
+                val rawXml = colorStateListLookup(ref) ?: return null
+                SelectorXmlPullParser.fromString(rawXml)
+            }
+            ResourceType.ANIMATOR ->
+            {
+                val ref = ResourceReference(ns, ResourceType.ANIMATOR, name)
+                val rawXml = animatorXmlLookup(ref) ?: return null
+                SelectorXmlPullParser.fromString(rawXml)
+            }
+            else -> null
+        }
     }
 
     override fun getAdapterBinding(cookie: Any?, attributes: Map<String, String>): AdapterBinding? = null

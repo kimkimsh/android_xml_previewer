@@ -70,12 +70,23 @@ internal class LayoutlibResourceBundle private constructor(
     fun getColorStateListXml(ref: ResourceReference): String? =
         byNs[ref.namespace]?.colorStateLists?.get(ref.name)
 
+    /**
+     * Sibling to getColorStateListXml — animator/motion-spec XML body lookup.
+     * MinimalLayoutlibCallback.getParser routes ResourceType.ANIMATOR through the same
+     * raw-XML feed mechanism, so Bridge AnimatorInflater receives an XmlResourceParser
+     * with input pointing at this body.
+     */
+    fun getAnimatorXml(ref: ResourceReference): String? =
+        byNs[ref.namespace]?.animators?.get(ref.name)
+
     /** 진단/테스트 전용. */
     fun namespacesInOrder(): List<ResourceNamespace> = byNs.keys.toList()
     fun styleCountForNamespace(ns: ResourceNamespace): Int = byNs[ns]?.styles?.size ?: 0
     fun attrCountForNamespace(ns: ResourceNamespace): Int = byNs[ns]?.attrs?.size ?: 0
     fun colorStateListCountForNamespace(ns: ResourceNamespace): Int =
         byNs[ns]?.colorStateLists?.size ?: 0
+    fun animatorCountForNamespace(ns: ResourceNamespace): Int =
+        byNs[ns]?.animators?.size ?: 0
 
     /**
      * W3D4-γ T15: Bridge.init() 의 enumValueMap 인자용 export — framework (ANDROID) bucket 의
@@ -135,6 +146,7 @@ internal class LayoutlibResourceBundle private constructor(
             val stylesMut = LinkedHashMap<String, StyleResourceValueImpl>()
             val styleDefs = mutableListOf<ParsedNsEntry.StyleDef>()
             val colorStateListsMut = LinkedHashMap<String, String>()
+            val animatorsMut = LinkedHashMap<String, String>()
 
             for (e in entries) when (e)
             {
@@ -201,6 +213,29 @@ internal class LayoutlibResourceBundle private constructor(
                         colorStateListsMut[e.name] = e.rawXml
                     }
                 }
+                is ParsedNsEntry.AnimatorXml ->
+                {
+                    val typeMap = byTypeMut.getOrPut(ResourceType.ANIMATOR) { mutableMapOf() }
+                    if (!typeMap.containsKey(e.name))
+                    {
+                        val ref = ResourceReference(ns, ResourceType.ANIMATOR, e.name)
+                        typeMap[e.name] = ResourceValueImpl(
+                            ref,
+                            AppLibraryResourceConstants.ANIMATOR_PLACEHOLDER_VALUE,
+                            null,
+                        )
+                    }
+                    if (animatorsMut.containsKey(e.name))
+                    {
+                        System.err.println(
+                            "[LayoutlibResourceBundle] dup animator-xml '${e.name}' ns=${ns.packageName ?: "RES_AUTO"} from ${e.sourcePackage} — first-wins",
+                        )
+                    }
+                    else
+                    {
+                        animatorsMut[e.name] = e.rawXml
+                    }
+                }
             }
 
             val allStyleNames: Set<String> = styleDefs.mapTo(HashSet()) { it.name }
@@ -232,6 +267,7 @@ internal class LayoutlibResourceBundle private constructor(
                 styles = stylesMut.toMap(),
                 attrs = attrsMut.toMap(),
                 colorStateLists = colorStateListsMut.toMap(),
+                animators = animatorsMut.toMap(),
             )
         }
     }

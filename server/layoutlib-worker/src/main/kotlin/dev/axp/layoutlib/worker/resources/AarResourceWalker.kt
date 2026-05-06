@@ -35,6 +35,7 @@ internal object AarResourceWalker
         val results = mutableListOf<Result>()
         var skipped = 0
         var totalColorXmls = 0
+        var totalAnimatorXmls = 0
         for (aar in aarPaths)
         {
             val r = walkOne(aar)
@@ -42,6 +43,7 @@ internal object AarResourceWalker
             {
                 results += r
                 totalColorXmls += r.entries.count { it is ParsedNsEntry.ColorStateList }
+                totalAnimatorXmls += r.entries.count { it is ParsedNsEntry.AnimatorXml }
             }
             else
             {
@@ -50,7 +52,7 @@ internal object AarResourceWalker
         }
         val tMs = (System.nanoTime() - t0) / 1_000_000
         System.err.println(
-            "[AarResourceWalker] walked ${aarPaths.size} AARs (${results.size} with res, $skipped code-only, $totalColorXmls color-state-lists) in ${tMs}ms",
+            "[AarResourceWalker] walked ${aarPaths.size} AARs (${results.size} with res, $skipped code-only, $totalColorXmls color-state-lists, $totalAnimatorXmls animator-xmls) in ${tMs}ms",
         )
         return results
     }
@@ -71,20 +73,21 @@ internal object AarResourceWalker
             val valuesEntries: List<ParsedNsEntry> =
                 if (valuesEntry == null) emptyList() else parseValuesXml(zip, valuesEntry, pkg)
             val colorEntries: List<ParsedNsEntry> = collectColorStateLists(zip, pkg)
+            val animatorEntries: List<ParsedNsEntry> = collectAnimatorXmls(zip, pkg)
 
-            // W3D4-β T12: values.xml 또는 color/*.xml 둘 중 하나라도 있으면 부분 이용.
-            // 둘 다 없으면 진짜 code-only (logging unchanged from γ 정책).
-            if (valuesEntries.isEmpty() && colorEntries.isEmpty())
+            // values.xml / color/*.xml / animator/*.xml 중 하나라도 있으면 부분 이용.
+            // 셋 다 없으면 진짜 code-only.
+            if (valuesEntries.isEmpty() && colorEntries.isEmpty() && animatorEntries.isEmpty())
             {
                 if (valuesEntry == null)
                 {
                     System.err.println(
-                        "[AarResourceWalker] $aarPath skipped — res/values/values.xml + res slash color slash {name}.xml 모두 없음 (pkg=$pkg)",
+                        "[AarResourceWalker] $aarPath skipped — res/values/values.xml + res slash color slash {name}.xml + res slash animator slash {name}.xml 모두 없음 (pkg=$pkg)",
                     )
                 }
                 return null
             }
-            return Result(pkg, valuesEntries + colorEntries)
+            return Result(pkg, valuesEntries + colorEntries + animatorEntries)
         }
     }
 
@@ -128,6 +131,33 @@ internal object AarResourceWalker
             if (baseName.isEmpty()) continue
             val rawXml = zip.getInputStream(e).bufferedReader().use { it.readText() }
             out += ParsedNsEntry.ColorStateList(baseName, rawXml, ResourceNamespace.RES_AUTO, pkg)
+        }
+        return out
+    }
+
+    /**
+     * Sibling to collectColorStateLists for `res/animator/<name>.xml`. AnimatorInflater
+     * consumes the body via XmlResourceParser, so the walker just captures the raw XML
+     * and lets MinimalLayoutlibCallback.getParser feed it through SelectorXmlPullParser.
+     * Qualifier directories (animator-v21/, etc.) are out of scope until W4+.
+     */
+    private fun collectAnimatorXmls(zip: ZipFile, pkg: String): List<ParsedNsEntry>
+    {
+        val out = mutableListOf<ParsedNsEntry>()
+        val entries = zip.entries()
+        while (entries.hasMoreElements())
+        {
+            val e = entries.nextElement()
+            if (e.isDirectory) continue
+            val n = e.name
+            if (!n.startsWith(AppLibraryResourceConstants.AAR_ANIMATOR_DIR_PREFIX)) continue
+            if (!n.endsWith(AppLibraryResourceConstants.COLOR_XML_SUFFIX)) continue
+            val rel = n.substring(AppLibraryResourceConstants.AAR_ANIMATOR_DIR_PREFIX.length)
+            if (rel.contains('/')) continue
+            val baseName = rel.removeSuffix(AppLibraryResourceConstants.COLOR_XML_SUFFIX)
+            if (baseName.isEmpty()) continue
+            val rawXml = zip.getInputStream(e).bufferedReader().use { it.readText() }
+            out += ParsedNsEntry.AnimatorXml(baseName, rawXml, ResourceNamespace.RES_AUTO, pkg)
         }
         return out
     }

@@ -36,20 +36,6 @@ class LayoutlibRendererIntegrationTest
         LayoutlibResourceValueLoader.clearCache()
     }
 
-    @org.junit.jupiter.api.Disabled(
-        "MaterialButton.<init> reaches View.<init> at offset 6033 and inflates the " +
-            "stateListAnimator referenced by Widget.Material3.Button " +
-            "(@animator/m3_btn_state_list_anim). AnimatorInflater.loadStateListAnimator " +
-            "calls callback.getParser for the animator XML resource, but the bundle and " +
-            "callback only currently feed values/* and res/color/* through " +
-            "AarResourceWalker — animator XML body is not loaded, so the parser receives " +
-            "no input and throws XmlPullParserException(\"No Input specified " +
-            "(position:START_DOCUMENT null@0:0)\"). Closing this gate requires extending " +
-            "AarResourceWalker to enumerate res/animator/*.xml, registering raw bodies " +
-            "alongside ColorStateList in NsBucket, and routing ResourceType.ANIMATOR " +
-            "through MinimalLayoutlibCallback.getParser the same way ColorStateList is " +
-            "routed today.",
-    )
     @Test
     fun `tier3 basic primary — activity_basic 가 직접 SUCCESS`()
     {

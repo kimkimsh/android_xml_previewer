@@ -23,7 +23,7 @@ class MinimalLayoutlibCallbackColorParserTest
 {
 
     private fun newCallback(lookup: (ResourceReference) -> String?): MinimalLayoutlibCallback =
-        MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, lookup)
+        MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, lookup, { null })
 
     private fun colorRv(name: String): ResourceValueImpl =
         ResourceValueImpl(

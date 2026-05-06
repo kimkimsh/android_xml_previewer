@@ -19,10 +19,11 @@ internal data class NsBucket(
     val styles: Map<String, StyleResourceValue>,
     val attrs: Map<String, AttrResourceValue>,
     val colorStateLists: Map<String, String> = emptyMap(),
+    val animators: Map<String, String> = emptyMap(),
 )
 {
     companion object
     {
-        val EMPTY: NsBucket = NsBucket(emptyMap(), emptyMap(), emptyMap(), emptyMap())
+        val EMPTY: NsBucket = NsBucket(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap())
     }
 }

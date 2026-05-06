@@ -22,7 +22,10 @@ internal object AppLibraryResourceConstants
      */
     const val AAR_COLOR_DIR_PREFIX = "res/color/"
 
-    /** color XML 파일 확장자. */
+    /** AAR ZIP entry prefix — animator / motion-spec XML 디렉토리 (sibling to AAR_COLOR_DIR_PREFIX). */
+    const val AAR_ANIMATOR_DIR_PREFIX = "res/animator/"
+
+    /** color / animator XML 파일 확장자. */
     const val COLOR_XML_SUFFIX = ".xml"
 
     /**
@@ -31,6 +34,9 @@ internal object AppLibraryResourceConstants
      * 도달하지 않음 — 단지 non-null marker. 진단 시 식별 용이성을 위해 의도된 magic prefix.
      */
     const val COLOR_STATE_LIST_PLACEHOLDER_VALUE = "@axp:color-state-list"
+
+    /** Animator-XML ResourceValue placeholder — sibling to COLOR_STATE_LIST_PLACEHOLDER_VALUE. */
+    const val ANIMATOR_PLACEHOLDER_VALUE = "@axp:animator-xml"
 
     /** AAR ZIP entry — AndroidManifest.xml (package 추출용). */
     const val AAR_ANDROID_MANIFEST_PATH = "AndroidManifest.xml"

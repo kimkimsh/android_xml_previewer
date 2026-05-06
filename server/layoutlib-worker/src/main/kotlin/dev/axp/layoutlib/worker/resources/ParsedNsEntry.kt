@@ -76,4 +76,16 @@ internal sealed class ParsedNsEntry
         override val namespace: ResourceNamespace,
         override val sourcePackage: String? = null,
     ) : ParsedNsEntry()
+
+    /**
+     * `res/animator/<name>.xml` raw body — Material AAR 의 stateListAnimator and motion-spec
+     * XML files. callback.getParser feeds the body through SelectorXmlPullParser the same
+     * way ColorStateList does; AnimatorInflater consumes via XmlResourceParser.
+     */
+    data class AnimatorXml(
+        val name: String,
+        val rawXml: String,
+        override val namespace: ResourceNamespace,
+        override val sourcePackage: String? = null,
+    ) : ParsedNsEntry()
 }
