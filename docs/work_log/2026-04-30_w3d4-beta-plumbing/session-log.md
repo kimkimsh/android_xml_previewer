@@ -337,3 +337,70 @@ W3D4-δ implementation phase (T17/T18/T19) 직후 W3D4-δ-B planning entry. 3-st
 - (다음 commit) `docs(w3d4-delta-b): plan v4.1 + round 6 pair-review (REVISE+GO_WITH_FIXES → APPLIED → GO)` — 본 session-log append + plan v4.1 + round6-pair-review.md.
 
 T20/T21/T22 의 implementation commit 은 별도 session 진입 시 수행.
+
+---
+
+## W3D4-δ-B implementation session append (2026-05-06, T20/T21/T22 partial)
+
+### Outcome (option B applied at chain-walker layer, setupResources mutation layer escalation)
+
+Plan v4.1 의 T20/T21/T22 sequence 실행. T20 5-probe 가 *current state* 에서 이미 5/5 PASS — chain walker / mThemeStack layer 가 inheritance chain (Lvl 5:2214 의 `?attr/colorPrimary`) 으로 정합. T21 의 fixture 1-line 은 chain shortening 효과 (Lvl 1 first-match) — 단 T22 acceptance gate 의 fail surface 는 *동일 throw* 유지 — 새 system-err warning `[layoutlib.warning] resources.resolve.theme | Failed to find '@attr/textAppearanceButton' in current theme.` 가 결정적 differential evidence: chain walker layer = PASS but render-time layer = FAIL.
+
+Round 6 Codex Q1 의 setupResources caveat 정확 적중. `Resources_Theme_Delegate.setupResources` (Resources_Theme_Delegate-javap.txt:165-205) 가 layoutlib runtime 의 `Theme.getKey().mResId` numeric style IDs 를 `BridgeContext.getRenderResources().applyStyle` 로 push — `LayoutlibRenderResources.applyStyle` (kt:228) 의 `useAsPrimary=true` 시 `mThemeStack.clear()` 가 fixture chain 전체 wipe → 모든 fixture-direct attr 정의가 render-time 에 invisible.
+
+W3D4-δ phase 종결 미달성. W3D4-δ-C 별도 phase escalation 필요 — `applyStyle` semantic 정합 또는 `resolveStyle(int)` callback wiring.
+
+### Files
+
+#### server/layoutlib-worker — test
+- `W3D4DeltaBGateChainProbeTest.kt` (신규, 5-probe IT-tagged) — option B 의 chain-walker layer enable mechanism 검증. T20 5/5 PASS (current state) — round 6 의 P2/P3 inheritance reachability 가설 정확 적중.
+- `LayoutlibRendererIntegrationTest.tier3 basic primary` `@Disabled` reason 갱신 — δ-B option B applied 후 setupResources mutation layer 명시. 영문 + structural-only.
+
+#### fixture
+- `fixture/sample-app/app/src/main/res/values/themes.xml` — `Theme.AxpFixture` 안 `<item name="colorPrimaryVariant">?attr/colorPrimary</item>` 1-line 추가. chain-walker layer 의 chain shortening 효과 확인 (Lvl 1 first-match) 단 render-time 에 setupResources 가 mutate 한 stack 이 fixture chain wipe.
+
+#### docs/work_log
+- `t22-acceptance-gate-followup.md` (신규) — chain-walker layer pass + render-time fail 의 layer 분류, Resources_Theme_Delegate.setupResources bytecode trace, W3D4-δ-C / W3D4-ε escalation ladder.
+
+### Test posture (T22 partial commit 후)
+
+| 측정 | T19 partial | T22 partial |
+|---|---|---|
+| 모듈 합산 unit | 241 PASS | **241 PASS** (T20 IT-tagged, T21 fixture XML, T22 annotation — unit gate 무영향) |
+| layoutlib-worker IT (`-PincludeTags=integration`) | 19 PASS + 2 SKIP | **24 PASS + 2 SKIP** (+5 W3D4DeltaBGateChainProbeTest probes, tier3-basic-primary 다시 SKIP, tier3-glyph W4 carry SKIP) |
+| acceptance gate `activity_basic` | δ-A closed, δ-B `@Disabled` (gate-chain reason) | **δ-A + δ-B chain-walker closed**, render-time `@Disabled` (setupResources mutation layer reason) |
+| T17 5-probe regression guard | 5/5 PASS | **5/5 PASS** ✓ |
+| T20 5-probe (신규) | n/a | **5/5 PASS** (current state — chain shortening 효과 및 inheritance reachability 동시 검증) |
+
+### Pair-review verdict
+
+본 session 은 implementation phase — Codex+Claude 1:1 pairing 비대상 (CLAUDE.md §Codex: planning ONLY). Round 6 의 plan v4.1 prediction (Q1 setupResources caveat) 이 정확히 적중함이 본 phase 의 empirical 결과. 다음 phase (W3D4-δ-C) 가 planning entry — round 7 pair-review 진입.
+
+### 신규 LM (round 6 적용 후 implementation 단계)
+
+| LM | 내용 | 후속 |
+|---|---|---|
+| **LM-W3D4-δ-H (신규)** | chain-walker IT (T17/T20-style probe) 가 PASS 라도 render-time path (Resources.Theme.obtainStyledAttributes(int[]) 경유) 에서 동일 attribute lookup 이 FAIL 가능. setupResources 가 `LayoutlibRenderResources.mThemeStack` 을 mutate 하므로 unit/IT chain walker 와 render-time stack 이 *서로 다른 instance* 일 수 있음. 향후 chain walker IT 만으로 close 보장 안 됨 — render-time mutation layer 의 별도 instrumentation 또는 reflective Theme.obtainStyledAttributes(int[]) 호출 IT 가 필요. plan v4.1 §4.2 footnote 의 "P2 PASS but T22 FAIL" 시나리오가 본 LM trigger | render-time path 측정용 IT (`Theme.obtainStyledAttributes(intArrayOf(...)).hasValue(0)` reflective) — 비용 vs benefit 평가 후 plan v5 의 T20-style probe 확장 검토 |
+
+### Carry-forward LM (combined 18)
+
+LM-W3D4-β-D~H + LM-W3D4-γ-A~C + LM-W3D4-δ-A~G + **LM-W3D4-δ-H (신규)** + LM (CLAUDE.md Three Hard Rules) + LM-G (planning only).
+
+### What's blocking / carried forward
+
+#### W3D4-δ-C planning entry (다음 세션)
+- t22-acceptance-gate-followup.md §5.1 의 3 옵션 (C-1 applyStyle preserve / C-2 resolveStyle callback wiring / C-3 setupResources 미경유 path) cost-benefit.
+- subagent investigation: setupResources call site frequency + applyStyle force semantic + MinimalLayoutlibCallback.byId resolveStyle signature.
+- round 7 Codex+Claude pair-review (planning ONLY).
+
+#### Out-of-scope (carry)
+- **W3D4-ε** (R$styleable layer) — δ-C 의 fix 후도 fail 시 callback instrumentation (axp.debug.callback) escalation.
+- **theme overlay support** (`materialThemeOverlay` chain walker) — δ-C 의 결과에 따라 surface 가능성.
+- **direct-sentinel widget surface** (BadgeDrawable + BaseTransientBottomBar) — 현 fixture 부재.
+- **W3D4 tier3-glyph** (W4 carry).
+
+### W3D4-δ-B commits + push (implementation 산출 — 3 commit)
+
+- `f7fb4d5` — `feat(w3d4-delta-b): T20 gate-chain probe IT (5-probe colorPrimaryVariant chain diagnostic)` (W3D4DeltaBGateChainProbeTest.kt 신규, 5/5 PASS in current state).
+- `2175eb1` — `feat(w3d4-delta-b): T21 fixture colorPrimaryVariant 1-line — checkMaterialTheme.hasValue gate close` (themes.xml 1-line, chain shortening 효과 검증).
+- `f05d6a6` — `feat(w3d4-delta-b): T22 partial — option B applied at chain-walker layer, render-time gate persists at setupResources mutation layer` (`@Disabled` reason 갱신 + t22-acceptance-gate-followup.md).
