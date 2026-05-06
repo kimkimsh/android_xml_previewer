@@ -200,3 +200,88 @@ W3D4-γ T16 partial 의 escalation 정책 정확히 적중 (LM-W3D4-β-H + LM-W3
 - (다음 commit) `docs(w3d4-delta): plan v3.2 + round 5 pair-review (GO_WITH_FIXES → APPLIED)` — 본 session-log append + plan v3.2 + round5-pair-review.md.
 
 T17/T18/T19 의 implementation commit 은 별도 session 진입 시 수행 (T17 은 IT-tagged 로 default unit suite 제외 — RED-on-main 가능, integration runner 만 PASS/FAIL signal).
+
+---
+
+## W3D4-δ implementation session append (2026-05-06)
+
+### W3D4-δ Outcome (T17/T18/T19 완료 — δ-A closed, δ-B escalation)
+
+Plan v3.2 의 T17/T18/T19 sequence 완료. Plan §5.6 결정 매트릭스의 row 2 ("H1 PASS, H2 FAIL, H3a/H3b PASS, instanceof gate FAIL → §5.1 적용") 적중 — H2 KILL POINT (`LayoutlibResourceBundle.getResource(STYLE ref)` 의 byType-only 경로) 가 dominant root cause 로 확정. T18 의 3-line STYLE special-case 적용 후 T17 5-probe diagnostic 5/5 PASS 전환 + acceptance gate 의 TextAppearance sentinel layer (W3D4-δ-A) 닫힘. 단 acceptance gate 자체는 plan §6.3 의 정확한 예측대로 W3D4-δ-B (gate chain `enforceMaterialTheme → checkMaterialTheme → colorPrimaryVariant`) 로 escalate — plan §11 out-of-scope.
+
+### W3D4-δ files
+
+#### server/layoutlib-worker — main
+- `LayoutlibResourceBundle.kt` — `getResource(STYLE ref)` 가 `bucket.styles[ref.name]` 위임 (3-line special-case sibling to T14 의 ATTR). KDoc 영문 + structural-only 로 갱신. instanceof StyleResourceValue contract 보존.
+- `LayoutlibResourceValueLoader.kt` — bootstrap 시 `axp.debug.bundleShape=true` gated one-shot summary log 추가 (RES_AUTO styles/attrs counts + byType[STYLE] intentionally-empty 진단). production hot-path 영향 없음 (default off).
+
+#### server/layoutlib-worker — test
+- `W3D4DeltaThemeChainDiagnosticTest.kt` (신규) — 5-probe diagnostic battery (H1 reachable-by-name / H2 getResource STYLE / H3a findItemInTheme materialButtonStyle / H3b findItemInTheme textAppearanceButton / bridgeTypedArray instanceof gate). `@Tag("integration")` — default unit suite 제외, `-PincludeTags=integration` opt-in.
+- `LayoutlibResourceBundleStyleLookupTest.kt` (신규, 4 cases) — STYLE-ref instanceof contract pinning + byType fallback 회귀 가드.
+- `LayoutlibRendererIntegrationTest.kt` — `tier3 basic primary` `@Disabled` reason 갱신 (δ-A → δ-B gate-chain structural reason, 영문 + Rule 2 OUT-OF-SCOPE 준수).
+
+#### docs/work_log
+- `t19-acceptance-gate-followup.md` (신규) — δ-A close + δ-B escalation chain 분류 (LM-W3D4-β-H 적용). stack trace + surface diff + 3-option closure ladder (isMaterialTheme short-circuit / colorPrimaryVariant chain / M3-path dispatch).
+
+### Test posture (T19 commit 후)
+
+| 측정 | baseline (T16 partial) | T19 commit 후 |
+|---|---|---|
+| 모듈 합산 unit | 237 PASS | **241 PASS** (+4 LayoutlibResourceBundleStyleLookupTest) |
+| layoutlib-worker IT (`-PincludeTags=integration`) | 14 PASS + 2 SKIP | **19 PASS + 2 SKIP** (+5 W3D4DeltaThemeChainDiagnosticTest probes; δ-B carry + tier3-glyph W4 carry SKIP) |
+| acceptance gate (`activity_basic` SUCCESS) | δ-A `@Disabled` carry | **δ-A closed**, δ-B `@Disabled` (escalation marker) |
+| T17 diagnostic 5-probe (H2 KILL POINT 검증) | n/a | **5/5 PASS** (회귀 가드) |
+
+### W3D4-δ pair-review verdict
+
+본 session 은 implementation phase — Claude+Codex 1:1 pairing 비대상 (CLAUDE.md §Codex: "1:1 Claude+Codex Pairing — Planning & Plan-Review ONLY"). T17 결과의 plan §5.6 row matching 이 hypothesis 검증을 fully prescribe 했으므로 추가 pair-review 불요. T18 fix 후 T17 5/5 PASS + IT 19/2 가 합산 검증.
+
+### W3D4-δ 신규 LM (implementation 산출)
+
+| LM | 내용 | 후속 |
+|---|---|---|
+| LM-W3D4-δ-E | T19 fail surface 의 `MaterialButton.<init>` offset 53 가 T18 전후 동일하지만 throw 진입 stage 가 `checkTextAppearance` (T18 전) → `checkCompatibleTheme → checkMaterialTheme` (T18 후) 로 shift — ThemeEnforcement 의 multi-stage 검사 패턴 확인. δ-A close 검증 시 메시지 자체로 layer 식별 (stack trace 의 entry point 비교) | δ-B planning entry 시 검증 패턴 |
+| LM-W3D4-δ-F (CLAUDE.md update mid-session) | Rule 2 OUT-OF-SCOPE 확대 — phase/task identifier (W3D4-δ-A, T17 등) 도 PR/conversation reference category. KDoc/`@Disabled` message 모두 structural-only 로 영문 + 식별자 회피. 본 session 의 신규 코드 모두 적용 (T17 KDoc, getResource KDoc, LayoutlibRendererIntegrationTest @Disabled message) | future commit 모두 적용 |
+
+### Carry-forward LM (combined)
+
+W3D4-β/γ + δ-planning + δ-implementation 의 모든 LM 통합 — 다음 세션 entry 시 모두 내재화:
+
+| LM | 1-line 핵심 |
+|---|---|
+| LM-W3D4-β-D | KDoc path 표기 시 `/*` 회피 (backtick 인용) |
+| LM-W3D4-β-E | `assertNotNull(...)` 반환 chain 금지 → `val v = ...; assertNotNull(v); v!!.method()` |
+| LM-W3D4-β-F | IT 실행은 `-PincludeTags=integration` 명시 |
+| LM-W3D4-β-G | subagent unzip `--directory /tmp/...` (cwd 회피) |
+| LM-W3D4-β-H | acceptance fail 시 stack trace 우선 → fail surface 가 spec layer 인지 새 layer 인지 분류 |
+| LM-W3D4-γ-A | reviewer prompt 에 "bundle 의 lookup path trace" 명시 |
+| LM-W3D4-γ-B | `Long.decode(...).toInt()` 로 32-bit unsigned hex literal 처리 |
+| LM-W3D4-γ-C | ThemeEnforcement multi-sentinel census — δ-A planning 이 7 attr 한 번에 census (적용 완료) |
+| LM-W3D4-δ-A | spec 코드 sample 의 모든 식별자 grep/Read 검증 의무 |
+| LM-W3D4-δ-B | NsBucket type-specific map 분리 = type 별 sibling KILL POINT (ATTR 의 γ T14 + STYLE 의 δ T18 검증) |
+| LM-W3D4-δ-C | LayoutlibResourceValueLoader runtime-classpath.txt 부재 silent empty AAR 위험 — W4+ hardening |
+| LM-W3D4-δ-D | T17 IT-tagged RED-on-main 가능 (default unit suite 제외) |
+| LM-W3D4-δ-E | acceptance gate fail 의 stack-trace entry-point 비교로 layer 식별 |
+| LM-W3D4-δ-F | CLAUDE.md Rule 2 OUT-OF-SCOPE 확대 (phase/task identifier 도 forbidden) — KDoc/annotation 모두 structural-only 영문 |
+| LM (CLAUDE.md Three Hard Rules) | 모든 신규 코드 KDoc/inline 영문 only, function/structure only, ticket reference 최소화 |
+
+### What's blocking / carried forward
+
+#### W3D4-δ-B planning entry (다음 세션)
+- 본 session 의 t19-acceptance-gate-followup.md §5 의 3-option closure ladder 가 plan-revision 의 입력:
+  - 옵션 A — `isMaterialTheme=true` 를 fixture theme chain 에서 expose (checkCompatibleTheme first-gate short-circuit).
+  - 옵션 B — `colorPrimaryVariant` chain resolution 정합 (Lvl 5:2214 chain 검사).
+  - 옵션 C — M3 path dispatch (Widget.Material3.Button) — H2 fix 가 enable, materialButtonStyle chain resolve 검증 추가.
+- 다음 plan-revision 는 1:1 Claude+Codex pair-review (CLAUDE.md §Codex: planning phase) — 3 옵션 중 어느 것이 minimal change & maximum coverage 인지 결정.
+- T17 5-probe IT 는 본 phase regression guard — δ-B fix 후도 5/5 PASS 보장.
+
+#### Out-of-scope (carry)
+- **W3D4-ε** — R$styleable seeder gap (RJarSymbolSeeder.kt:64-66). δ-B 적용 후도 acceptance fail 시 §5.3.1 의 BridgeContext callback instrumentation (axp.debug.callback) 으로 narrow.
+- **W3D4 tier3-glyph** — Font wiring, W4 carry.
+- **DRAWABLE selector XML feed** — W3D4-β plan v3 §5.4 T12.5 escalation. 별도 phase.
+
+### W3D4-δ commits + push
+
+- `2ce640a` — `feat(w3d4-delta): T17 theme chain diagnostic battery (5-probe IT)` (신규 W3D4DeltaThemeChainDiagnosticTest.kt, RED-on-main intentional).
+- `22f7077` — `feat(w3d4-delta): T18 LayoutlibResourceBundle.getResource STYLE special-case (H2 KILL POINT fix)` (3-line fix + bootstrap log + 4-case regression test). T17 5/5 PASS 전환.
+- `473f55a` — `feat(w3d4-delta): T19 partial — TextAppearance sentinel layer closed via T18, gate-chain surface escalates` (`@Disabled` reason 갱신 to δ-B + t19-acceptance-gate-followup.md).
