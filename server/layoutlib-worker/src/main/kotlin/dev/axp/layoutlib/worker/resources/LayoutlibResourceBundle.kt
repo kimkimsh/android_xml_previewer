@@ -40,12 +40,13 @@ internal class LayoutlibResourceBundle private constructor(
     }
 
     /**
-     * W3D4-γ T14 (round 4 Codex Q5 KILL POINT fix): RES_AUTO/ANDROID 의 ATTR ref 는
-     * `byType[ATTR]` 가 아닌 `attrs` map 에서 lookup (AttrDef 가 attrs 에만 등록됨 — NsBucket
-     * 의 byType ↔ attrs 분리 정합). BridgeTypedArray.resolveEnumAttribute 의 path B 와
-     * BridgeXmlPullAttributes.getAttributeIntValue 의 project supplier 가 모두 RenderResources
-     * 의 (un)resolvedResource 를 거쳐 본 메서드에 도달 — instanceof AttrResourceValue cast 를
-     * 위해 AttrResourceValueImpl 인스턴스 자체가 반환되어야 함.
+     * Looks up a resource by namespace + type. ATTR and STYLE refs read from their
+     * type-specific maps (`attrs` / `styles`) so the returned instance preserves the
+     * AttrResourceValue / StyleResourceValue runtime type that bridge code casts to
+     * after defStyleAttr / defStyleRes resolution; every other type falls through to
+     * the generic byType bucket. Splitting attrs and styles out of byType is what
+     * keeps NsBucket.attrs and NsBucket.styles each aligned with the layoutlib API
+     * the bridge expects.
      */
     fun getResource(ref: ResourceReference): ResourceValue?
     {
@@ -53,6 +54,10 @@ internal class LayoutlibResourceBundle private constructor(
         if (ref.resourceType == ResourceType.ATTR)
         {
             return bucket.attrs[ref.name]
+        }
+        if (ref.resourceType == ResourceType.STYLE)
+        {
+            return bucket.styles[ref.name]
         }
         return bucket.byType[ref.resourceType]?.get(ref.name)
     }

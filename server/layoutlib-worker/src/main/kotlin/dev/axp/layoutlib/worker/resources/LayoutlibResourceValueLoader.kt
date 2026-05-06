@@ -66,8 +66,19 @@ internal object LayoutlibResourceValueLoader
         System.err.println(
             "[LayoutlibResourceValueLoader] cold-start framework=${tFramework}ms app=${tApp}ms aar=${tAar}ms build=${tBuild}ms total=${tFramework + tApp + tAar + tBuild}ms"
         )
+        if (DEBUG_BUNDLE_SHAPE)
+        {
+            val resAuto = bundle.namespacesInOrder().lastOrNull() ?: ResourceNamespace.RES_AUTO
+            val styles = bundle.styleCountForNamespace(resAuto)
+            val attrs = bundle.attrCountForNamespace(resAuto)
+            System.err.println(
+                "[LayoutlibResourceValueLoader] bundle shape RES_AUTO styles=$styles attrs=$attrs (byType[STYLE] intentionally empty — STYLE refs route via styles map)"
+            )
+        }
         return bundle
     }
+
+    private val DEBUG_BUNDLE_SHAPE: Boolean = System.getProperty("axp.debug.bundleShape") == "true"
 
     private fun loadFramework(distDataDir: Path): List<ParsedNsEntry>
     {
