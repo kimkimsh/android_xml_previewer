@@ -119,7 +119,6 @@ class LayoutlibRendererTier3MinimalTest {
      * T1 gate 와 분리 (3b-values 완료는 이 테스트 unblock 의 전제).
      */
     @Test
-    @Disabled("tier3-glyph W4 carry — Font wiring + glyph 렌더링 검증 (T2 gate)")
     fun `tier3-glyph — activity_minimal 의 TextView 영역에 실 dark pixel`() {
         val renderer = renderer()
         val bytes = renderer.renderPng("activity_minimal.xml")
