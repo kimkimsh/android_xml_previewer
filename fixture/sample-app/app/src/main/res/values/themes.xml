@@ -6,6 +6,7 @@
         <item name="colorPrimary">#6750A4</item>
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="colorPrimaryContainer">#EADDFF</item>
+        <item name="colorPrimaryVariant">?attr/colorPrimary</item>
         <item name="colorOnSurface">#1C1B1F</item>
         <item name="colorOnSurfaceVariant">#49454F</item>
     </style>
