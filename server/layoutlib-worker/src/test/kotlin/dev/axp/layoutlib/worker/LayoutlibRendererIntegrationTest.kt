@@ -37,14 +37,23 @@ class LayoutlibRendererIntegrationTest
     }
 
     @org.junit.jupiter.api.Disabled(
-        "MaterialButton.<init> throws \"The style on this component requires your app theme " +
-            "to be Theme.MaterialComponents (or a descendant).\" via ThemeEnforcement." +
-            "checkCompatibleTheme → checkMaterialTheme. Closing this gate requires either " +
-            "exposing isMaterialTheme=true on the fixture theme chain to short-circuit " +
-            "checkCompatibleTheme, or wiring colorPrimaryVariant chain resolution so " +
-            "checkMaterialTheme's hasValue probe succeeds, or routing MaterialButton " +
-            "through the M3 path (Widget.Material3.Button) so enforceMaterialTheme=false " +
-            "skips the gate entirely.",
+        "MaterialButton.<init> still throws \"The style on this component requires your app " +
+            "theme to be Theme.MaterialComponents (or a descendant).\" via ThemeEnforcement." +
+            "checkCompatibleTheme → checkMaterialTheme even after the fixture defines " +
+            "colorPrimary, colorPrimaryContainer, and colorPrimaryVariant. The chain-walker " +
+            "layer is coherent (5-probe diagnostic passes for findItemInTheme + " +
+            "resolveResValue on every fixture attr), but the layoutlib render path runs " +
+            "Resources_Theme_Delegate.setupResources before BridgeContext." +
+            "internalObtainStyledAttributes(0, attrs) — that helper resolves the Theme's " +
+            "ThemeKey.mResId numeric style ids and pushes them onto BridgeContext's " +
+            "RenderResources via applyStyle, mutating the active theme stack independently " +
+            "of LayoutlibRenderResources.mThemeStack. The render-time warning \"Failed to " +
+            "find '@attr/textAppearanceButton' in current theme.\" is the direct evidence: " +
+            "an attr the unit/IT chain walker resolves becomes invisible after " +
+            "setupResources runs. Closing this gate requires either making " +
+            "LayoutlibRenderResources.applyStyle preserve the fixture chain when layoutlib " +
+            "pushes additional ids, or wiring resolveStyle(int) through the callback so " +
+            "the same StyleResourceValue instances flow into the active stack.",
     )
     @Test
     fun `tier3 basic primary — activity_basic 가 직접 SUCCESS`()
