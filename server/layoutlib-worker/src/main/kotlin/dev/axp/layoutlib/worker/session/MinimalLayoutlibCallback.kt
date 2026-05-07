@@ -36,6 +36,7 @@ class MinimalLayoutlibCallback(
     private val initializer: ((ResourceReference, Int) -> Unit) -> Unit,
     private val colorStateListLookup: (ResourceReference) -> String?,
     private val animatorXmlLookup: (ResourceReference) -> String?,
+    private val drawableXmlLookup: (ResourceReference) -> String?,
 ) : LayoutlibCallback() {
 
     private val nextId = AtomicInteger(FIRST_ID)
@@ -134,6 +135,12 @@ class MinimalLayoutlibCallback(
             {
                 val ref = ResourceReference(ns, ResourceType.ANIMATOR, name)
                 val rawXml = animatorXmlLookup(ref) ?: return null
+                SelectorXmlPullParser.fromString(rawXml)
+            }
+            ResourceType.DRAWABLE ->
+            {
+                val ref = ResourceReference(ns, ResourceType.DRAWABLE, name)
+                val rawXml = drawableXmlLookup(ref) ?: return null
                 SelectorXmlPullParser.fromString(rawXml)
             }
             else -> null

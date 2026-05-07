@@ -200,6 +200,7 @@ class LayoutlibRenderer(
                 ::seedRJarSymbols,
                 { ref -> bundle.getColorStateListXml(ref) },
                 { ref -> bundle.getAnimatorXml(ref) },
+                { ref -> bundle.getDrawableXml(ref) },
             ),
             resources = resources,
         )

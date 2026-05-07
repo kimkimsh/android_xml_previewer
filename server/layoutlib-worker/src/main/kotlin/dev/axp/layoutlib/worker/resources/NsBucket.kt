@@ -6,13 +6,19 @@ import com.android.ide.common.rendering.api.StyleResourceValue
 import com.android.resources.ResourceType
 
 /**
- * W3D4 §3.1 #3: 단일 namespace 의 byType/styles/attrs immutable container.
- * LayoutlibResourceBundle.byNs 의 value type.
- *
- * W3D4-β T12: colorStateLists (name → raw selector XML) 추가. Bridge
- * ResourceHelper.getColorStateList 가 callback.getParser 를 통해 input feed 받을
- * 대상. byType[COLOR] 에는 placeholder ResourceValue 가 같이 등록되어 BridgeContext
- * resolution 단계 통과를 보장.
+ * Single-namespace immutable container holding the resource shape that
+ * LayoutlibResourceBundle.byNs maps each ResourceNamespace to. Splits resources
+ * across four maps:
+ *  - byType: generic ResourceValue keyed by ResourceType + name (covers SimpleValue
+ *    plus the placeholder ResourceValue for color-state-list / animator / drawable
+ *    entries that gives BridgeContext's getResource a non-null value to return).
+ *  - styles / attrs: type-specific maps preserving StyleResourceValue and
+ *    AttrResourceValue runtime types that the bridge casts to after defStyleAttr /
+ *    defStyleRes resolution.
+ *  - colorStateLists / animators / drawables: name → raw XML body, fed back into
+ *    layoutlib through MinimalLayoutlibCallback.getParser when Bridge asks for an
+ *    XmlResourceParser via ResourceHelper.getColorStateList, AnimatorInflater, or
+ *    DrawableInflater respectively.
  */
 internal data class NsBucket(
     val byType: Map<ResourceType, Map<String, ResourceValue>>,
@@ -20,10 +26,11 @@ internal data class NsBucket(
     val attrs: Map<String, AttrResourceValue>,
     val colorStateLists: Map<String, String> = emptyMap(),
     val animators: Map<String, String> = emptyMap(),
+    val drawables: Map<String, String> = emptyMap(),
 )
 {
     companion object
     {
-        val EMPTY: NsBucket = NsBucket(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap())
+        val EMPTY: NsBucket = NsBucket(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap())
     }
 }

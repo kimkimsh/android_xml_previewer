@@ -7,15 +7,19 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
 /**
- * W3D4 §3.1 #5: runtime-classpath.txt → 41 AAR walker.
- * - 각 AAR 의 AndroidManifest 의 package 를 추출 (진단/dedupe-source 추적용).
- * - res/values/values.xml 부재 → silent skip + 1줄 로깅 (γ 정책).
- * - namespace 는 round 2 mode 통일에 따라 항상 RES_AUTO.
- * - 전체 wall-clock + 카운트 진단 출력 (Codex Q4).
+ * AAR walker that enumerates the runtime-classpath manifest's AAR list and emits
+ * ParsedNsEntry per file. Each AAR contributes:
+ *  - AndroidManifest's package name (for diagnostic / dedupe-source tracking).
+ *  - res/values/values.xml — single-value entries, attrs, styles (RES_AUTO).
+ *  - res/color/<name>.xml — ColorStateList raw bodies (default qualifier only).
+ *  - res/animator/<name>.xml — AnimatorXml raw bodies (default qualifier only).
+ *  - res/drawable/<name>.xml — DrawableXml raw bodies (default qualifier only).
  *
- * W3D4-β T12: `res slash color slash {name}.xml` (default qualifier 만 — color-v31/ color-night-v8/ 등은
- * W4+ scope) 도 enumerate 하여 ParsedNsEntry.ColorStateList 로 emit. <selector> 파싱은
- * layoutlib Bridge 에 위임 — 본 walker 는 raw XML 문자열만 책임.
+ * Qualifier directories (color-v31/, animator-v21/, drawable-night/, etc.) stay
+ * out of scope until density / locale / night-mode support is wired. The walker
+ * captures raw XML strings only — selector / vector / animator parsing is
+ * delegated to layoutlib's Bridge via MinimalLayoutlibCallback.getParser. AARs
+ * lacking all four resource sources are skipped with a single diagnostic line.
  */
 internal object AarResourceWalker
 {
@@ -36,6 +40,7 @@ internal object AarResourceWalker
         var skipped = 0
         var totalColorXmls = 0
         var totalAnimatorXmls = 0
+        var totalDrawableXmls = 0
         for (aar in aarPaths)
         {
             val r = walkOne(aar)
@@ -44,6 +49,7 @@ internal object AarResourceWalker
                 results += r
                 totalColorXmls += r.entries.count { it is ParsedNsEntry.ColorStateList }
                 totalAnimatorXmls += r.entries.count { it is ParsedNsEntry.AnimatorXml }
+                totalDrawableXmls += r.entries.count { it is ParsedNsEntry.DrawableXml }
             }
             else
             {
@@ -52,7 +58,7 @@ internal object AarResourceWalker
         }
         val tMs = (System.nanoTime() - t0) / 1_000_000
         System.err.println(
-            "[AarResourceWalker] walked ${aarPaths.size} AARs (${results.size} with res, $skipped code-only, $totalColorXmls color-state-lists, $totalAnimatorXmls animator-xmls) in ${tMs}ms",
+            "[AarResourceWalker] walked ${aarPaths.size} AARs (${results.size} with res, $skipped code-only, $totalColorXmls color-state-lists, $totalAnimatorXmls animator-xmls, $totalDrawableXmls drawable-xmls) in ${tMs}ms",
         )
         return results
     }
@@ -74,20 +80,21 @@ internal object AarResourceWalker
                 if (valuesEntry == null) emptyList() else parseValuesXml(zip, valuesEntry, pkg)
             val colorEntries: List<ParsedNsEntry> = collectColorStateLists(zip, pkg)
             val animatorEntries: List<ParsedNsEntry> = collectAnimatorXmls(zip, pkg)
+            val drawableEntries: List<ParsedNsEntry> = collectDrawableXmls(zip, pkg)
 
-            // values.xml / color/*.xml / animator/*.xml 중 하나라도 있으면 부분 이용.
-            // 셋 다 없으면 진짜 code-only.
-            if (valuesEntries.isEmpty() && colorEntries.isEmpty() && animatorEntries.isEmpty())
+            // values.xml / color/*.xml / animator/*.xml / drawable/*.xml 중 하나라도 있으면 부분 이용.
+            // 모두 없으면 진짜 code-only.
+            if (valuesEntries.isEmpty() && colorEntries.isEmpty() && animatorEntries.isEmpty() && drawableEntries.isEmpty())
             {
                 if (valuesEntry == null)
                 {
                     System.err.println(
-                        "[AarResourceWalker] $aarPath skipped — res/values/values.xml + res slash color slash {name}.xml + res slash animator slash {name}.xml 모두 없음 (pkg=$pkg)",
+                        "[AarResourceWalker] $aarPath skipped — res/values/values.xml + res/color/{name}.xml + res/animator/{name}.xml + res/drawable/{name}.xml all absent (pkg=$pkg)",
                     )
                 }
                 return null
             }
-            return Result(pkg, valuesEntries + colorEntries + animatorEntries)
+            return Result(pkg, valuesEntries + colorEntries + animatorEntries + drawableEntries)
         }
     }
 
@@ -158,6 +165,33 @@ internal object AarResourceWalker
             if (baseName.isEmpty()) continue
             val rawXml = zip.getInputStream(e).bufferedReader().use { it.readText() }
             out += ParsedNsEntry.AnimatorXml(baseName, rawXml, ResourceNamespace.RES_AUTO, pkg)
+        }
+        return out
+    }
+
+    /**
+     * Sibling to collectAnimatorXmls / collectColorStateLists for `res/drawable/<name>.xml`.
+     * Captures the raw body so MinimalLayoutlibCallback.getParser can hand it to
+     * BridgeContext's DrawableInflater. Default qualifier directory only — drawable-night/
+     * and density variants stay out of scope until W4+ qualifier support.
+     */
+    private fun collectDrawableXmls(zip: ZipFile, pkg: String): List<ParsedNsEntry>
+    {
+        val out = mutableListOf<ParsedNsEntry>()
+        val entries = zip.entries()
+        while (entries.hasMoreElements())
+        {
+            val e = entries.nextElement()
+            if (e.isDirectory) continue
+            val n = e.name
+            if (!n.startsWith(AppLibraryResourceConstants.AAR_DRAWABLE_DIR_PREFIX)) continue
+            if (!n.endsWith(AppLibraryResourceConstants.COLOR_XML_SUFFIX)) continue
+            val rel = n.substring(AppLibraryResourceConstants.AAR_DRAWABLE_DIR_PREFIX.length)
+            if (rel.contains('/')) continue
+            val baseName = rel.removeSuffix(AppLibraryResourceConstants.COLOR_XML_SUFFIX)
+            if (baseName.isEmpty()) continue
+            val rawXml = zip.getInputStream(e).bufferedReader().use { it.readText() }
+            out += ParsedNsEntry.DrawableXml(baseName, rawXml, ResourceNamespace.RES_AUTO, pkg)
         }
         return out
     }

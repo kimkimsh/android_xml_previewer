@@ -25,7 +25,20 @@ internal object AppLibraryResourceConstants
     /** AAR ZIP entry prefix — animator / motion-spec XML 디렉토리 (sibling to AAR_COLOR_DIR_PREFIX). */
     const val AAR_ANIMATOR_DIR_PREFIX = "res/animator/"
 
-    /** color / animator XML 파일 확장자. */
+    /**
+     * AAR ZIP entry prefix — drawable XML directory (sibling to AAR_COLOR_DIR_PREFIX +
+     * AAR_ANIMATOR_DIR_PREFIX). Material 1.12.0 ships ~73 drawable XMLs (35 vector,
+     * 18 animated-vector, 10 shape, 3 selector, 1 inset, 1 layer-list, etc.). Style
+     * items such as Base.Widget.Material3.Chip.checkedIcon and Chip.closeIcon point
+     * directly at @drawable/ic_m3_chip_*, so the bundle must feed the raw XML through
+     * MinimalLayoutlibCallback.getParser the same way ColorStateList and AnimatorXml do;
+     * BridgeContext.DrawableInflater consumes the body via XmlResourceParser. Qualifier
+     * directories (drawable-night/, drawable-v24/, density variants) are out of scope
+     * until W4+ density/locale/night-mode support.
+     */
+    const val AAR_DRAWABLE_DIR_PREFIX = "res/drawable/"
+
+    /** color / animator / drawable XML 파일 확장자. */
     const val COLOR_XML_SUFFIX = ".xml"
 
     /**
@@ -37,6 +50,9 @@ internal object AppLibraryResourceConstants
 
     /** Animator-XML ResourceValue placeholder — sibling to COLOR_STATE_LIST_PLACEHOLDER_VALUE. */
     const val ANIMATOR_PLACEHOLDER_VALUE = "@axp:animator-xml"
+
+    /** Drawable-XML ResourceValue placeholder — sibling to ANIMATOR_PLACEHOLDER_VALUE. */
+    const val DRAWABLE_PLACEHOLDER_VALUE = "@axp:drawable-xml"
 
     /** AAR ZIP entry — AndroidManifest.xml (package 추출용). */
     const val AAR_ANDROID_MANIFEST_PATH = "AndroidManifest.xml"

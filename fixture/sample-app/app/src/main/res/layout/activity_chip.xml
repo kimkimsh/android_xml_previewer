@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Single-widget fixture exercising com.google.android.material.chip.Chip.
+
+  Inflates one Chip with implicit chipStyle (Widget.Material3.Chip.Assist via
+  Theme.Material3 ancestor). Distinct gate path from MaterialButton: Chip's
+  ensureMaterialThemeRequired check is independent of MaterialButton's
+  AppCompatButton-derived gate, so a render failure isolates a Chip-specific
+  layer rather than mixing with already-validated MaterialButton coverage.
+-->
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <com.google.android.material.chip.Chip
+        android:id="@+id/chip_assist"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/fixture_chip_label"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+</androidx.constraintlayout.widget.ConstraintLayout>

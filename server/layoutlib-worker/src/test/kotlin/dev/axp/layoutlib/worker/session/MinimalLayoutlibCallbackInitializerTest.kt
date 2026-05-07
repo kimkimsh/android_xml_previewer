@@ -22,6 +22,7 @@ class MinimalLayoutlibCallbackInitializerTest {
             { register -> register(seededRef, 0x7F010001) },
             { null },
             { null },
+            { null },
         )
         assertEquals(seededRef, cb.resolveResourceId(0x7F010001))
         assertEquals(0x7F010001, cb.getOrGenerateResourceId(seededRef))
@@ -39,6 +40,7 @@ class MinimalLayoutlibCallbackInitializerTest {
             },
             { null },
             { null },
+            { null },
         )
         val newRef = ResourceReference(ResourceNamespace.fromPackageName("p"), ResourceType.ID, "fresh")
         val newId = cb.getOrGenerateResourceId(newRef)
@@ -51,6 +53,7 @@ class MinimalLayoutlibCallbackInitializerTest {
             MinimalLayoutlibCallback(
                 { ClassLoader.getSystemClassLoader() },
                 { _ -> error("simulated R jar I O failure") },
+                { null },
                 { null },
                 { null },
             )

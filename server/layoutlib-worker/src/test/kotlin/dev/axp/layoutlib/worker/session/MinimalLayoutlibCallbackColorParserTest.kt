@@ -12,18 +12,32 @@ import org.junit.jupiter.api.Test
 import org.xmlpull.v1.XmlPullParser
 
 /**
- * W3D4-β T12: MinimalLayoutlibCallback.getParser 의 color state list path 검증.
+ * MinimalLayoutlibCallback.getParser contract verification for the
+ * raw-XML feed path covering ResourceType COLOR / ANIMATOR / DRAWABLE.
  *
- * - rv == null → null (방어).
- * - rv.resourceType != COLOR → null (LAYOUT/MENU/DRAWABLE 등 prior 동작 보존).
- * - rv 가 COLOR + lookup miss → null.
- * - rv 가 COLOR + lookup hit → ILayoutPullParser, START_TAG=selector + getLayoutNamespace=RES_AUTO.
+ *  - null layout resource yields null.
+ *  - LAYOUT / MENU and other unhandled types yield null without consulting any lookup.
+ *  - COLOR / ANIMATOR / DRAWABLE on lookup miss yield null.
+ *  - COLOR / ANIMATOR / DRAWABLE on lookup hit yield an ILayoutPullParser whose
+ *    layoutNamespace is RES_AUTO and whose first START_TAG matches the raw body's root.
  */
 class MinimalLayoutlibCallbackColorParserTest
 {
 
     private fun newCallback(lookup: (ResourceReference) -> String?): MinimalLayoutlibCallback =
-        MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, lookup, { null })
+        MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, lookup, { null }, { null })
+
+    private fun newCallbackWithDrawable(
+        colorLookup: (ResourceReference) -> String?,
+        drawableLookup: (ResourceReference) -> String?,
+    ): MinimalLayoutlibCallback =
+        MinimalLayoutlibCallback(
+            { ClassLoader.getSystemClassLoader() },
+            { /* no-op */ },
+            colorLookup,
+            { null },
+            drawableLookup,
+        )
 
     private fun colorRv(name: String): ResourceValueImpl =
         ResourceValueImpl(
@@ -52,15 +66,51 @@ class MinimalLayoutlibCallbackColorParserTest
     }
 
     @Test
-    fun `getParser - DRAWABLE type → null (prior 동작 보존, drawable selector 는 T12_5 escalation 대상)`()
+    fun `getParser - DRAWABLE type + drawable lookup miss returns null`()
     {
-        val cb = newCallback { _ -> error("lookup must not be called for drawable") }
+        val cb = newCallbackWithDrawable(
+            colorLookup = { _ -> error("color lookup must not be called for drawable") },
+            drawableLookup = { _ -> null },
+        )
         val rv = ResourceValueImpl(
             ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.DRAWABLE, "ic_foo"),
             "/path/to/ic_foo.xml",
             null,
         )
         assertNull(cb.getParser(rv))
+    }
+
+    @Test
+    fun `getParser - DRAWABLE type + drawable lookup hit feeds raw XML`()
+    {
+        val rawXml = """<?xml version="1.0" encoding="utf-8"?>
+            |<vector xmlns:android="http://schemas.android.com/apk/res/android"
+            |    android:width="24dp" android:height="24dp"
+            |    android:viewportWidth="24" android:viewportHeight="24">
+            |    <path android:fillColor="#000000" android:pathData="M12 2 L22 22 H2 Z"/>
+            |</vector>""".trimMargin()
+        val cb = newCallbackWithDrawable(
+            colorLookup = { _ -> error("color lookup must not be called for drawable") },
+            drawableLookup = { ref ->
+                if (ref.name == "ic_m3_chip_close") rawXml else null
+            },
+        )
+        val rv = ResourceValueImpl(
+            ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.DRAWABLE, "ic_m3_chip_close"),
+            "@axp:drawable-xml",
+            null,
+        )
+        val parser = cb.getParser(rv)
+        assertNotNull(parser)
+        val p = parser!!
+        var event = p.next()
+        while (event != XmlPullParser.START_TAG && event != XmlPullParser.END_DOCUMENT)
+        {
+            event = p.next()
+        }
+        assertEquals(XmlPullParser.START_TAG, event)
+        assertEquals("vector", p.name)
+        assertEquals(ResourceNamespace.RES_AUTO, p.layoutNamespace)
     }
 
     @Test

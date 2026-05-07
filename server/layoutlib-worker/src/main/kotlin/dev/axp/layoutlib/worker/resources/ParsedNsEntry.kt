@@ -88,4 +88,19 @@ internal sealed class ParsedNsEntry
         override val namespace: ResourceNamespace,
         override val sourcePackage: String? = null,
     ) : ParsedNsEntry()
+
+    /**
+     * `res/drawable/<name>.xml` raw body — vector / animated-vector / shape / selector /
+     * layer-list / inset / ripple / level-list root elements. Style items in Material AAR
+     * (e.g. Base.Widget.Material3.Chip.checkedIcon → @drawable/ic_m3_chip_checked_circle)
+     * resolve to these files at inflate time, regardless of widget visibility. callback
+     * .getParser feeds the rawXml through SelectorXmlPullParser; BridgeContext's
+     * DrawableInflater consumes via XmlResourceParser.
+     */
+    data class DrawableXml(
+        val name: String,
+        val rawXml: String,
+        override val namespace: ResourceNamespace,
+        override val sourcePackage: String? = null,
+    ) : ParsedNsEntry()
 }

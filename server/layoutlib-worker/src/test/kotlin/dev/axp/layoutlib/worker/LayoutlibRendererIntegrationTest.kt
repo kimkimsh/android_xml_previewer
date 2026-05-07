@@ -7,6 +7,7 @@ import dev.axp.layoutlib.worker.session.SessionConstants
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
@@ -77,6 +78,50 @@ class LayoutlibRendererIntegrationTest
             "minimal carry SUCCESS",
         )
         assertTrue(bytes.size > MIN_RENDERED_PNG_BYTES, "PNG > $MIN_RENDERED_PNG_BYTES")
+    }
+
+    /**
+     * Single-widget Chip fixture acceptance gate. The test is disabled because
+     * Chip inflation surfaces two deeper layers beyond the drawable XML feed:
+     *
+     *  1. Chip's android:stateListAnimator (@animator/m3_chip_state_list_anim)
+     *     reaches AnimatorInflater.createStateListAnimatorFromXml without
+     *     MinimalLayoutlibCallback.getParser ever being called for ResourceType
+     *     .ANIMATOR — even though m3_chip_state_list_anim is present in the
+     *     RES_AUTO bucket animators map. The same animator path works for
+     *     MaterialButton's m3_btn_state_list_anim. The divergence implies a
+     *     Resources_Delegate.getAnimation_Original code-path difference
+     *     triggered by the <selector> root form rather than the <set> root
+     *     form Material uses for its button animator.
+     *
+     *  2. With android:stateListAnimator overridden to @null on the Chip,
+     *     inflation advances through extensive theme-attribute color-state-list
+     *     resolution but then throws NullPointerException on
+     *     com.google.android.material.resources.TextAppearance.getTextSize()
+     *     because the TextAppearance instance is null — indicating
+     *     ?attr/textAppearanceLabelLarge resolves to a value that ChipDrawable
+     *     loadFromAttributes cannot consume as a TextAppearance.
+     */
+    @Disabled("chip stateListAnimator callback bypass + ChipDrawable TextAppearance NPE — see KDoc above")
+    @Test
+    fun `tier3 chip — activity_chip renders SUCCESS via primary path`()
+    {
+        val (dist, layoutRoot, moduleRoot) = locateAll() ?: return
+        val renderer = SharedLayoutlibRenderer.getOrCreate(
+            distDir = dist,
+            fixtureRoot = layoutRoot,
+            sampleAppModuleRoot = moduleRoot,
+            themeName = SessionConstants.DEFAULT_FIXTURE_THEME,
+            fallback = null,
+        )
+        val bytes = renderer.renderPng("activity_chip.xml")
+        assertEquals(
+            Result.Status.SUCCESS,
+            renderer.lastSessionResult?.status,
+            "chip primary SUCCESS",
+        )
+        assertTrue(bytes.size > MIN_RENDERED_PNG_BYTES, "PNG > $MIN_RENDERED_PNG_BYTES")
+        assertTrue(isPngMagic(bytes), "PNG magic header")
     }
 
     private fun isPngMagic(bytes: ByteArray): Boolean =
