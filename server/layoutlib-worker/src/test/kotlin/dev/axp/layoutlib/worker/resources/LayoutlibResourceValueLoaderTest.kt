@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.io.TempDir
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
@@ -128,6 +129,40 @@ class LayoutlibResourceValueLoaderTest
         assertEquals("B", winner!!.getItem(
             com.android.ide.common.rendering.api.ResourceReference(ResourceNamespace.RES_AUTO, com.android.resources.ResourceType.ATTR, "k")
         )?.value)
+    }
+
+    /**
+     * Contract: loadOrGet must throw IllegalArgumentException whose message
+     * names the missing runtime-classpath.txt path and surfaces an
+     * :app:assembleDebug remediation hint. Mirrors loadFramework's require()
+     * guards on the framework data dir and required values XML.
+     */
+    @Test
+    fun `runtime-classpath txt 부재 시 명시 require throw`(@TempDir tmp: Path)
+    {
+        val distData = Files.createDirectories(tmp.resolve("dist/data"))
+        val valuesDir = Files.createDirectories(distData.resolve(ResourceLoaderConstants.VALUES_DIR))
+        for (filename in ResourceLoaderConstants.REQUIRED_FILES)
+        {
+            valuesDir.resolve(filename).toFile().writeText("""<resources/>""")
+        }
+        val sampleAppRoot = Files.createDirectories(tmp.resolve("sampleapp"))
+        val classpathTxt = sampleAppRoot.resolve(AppLibraryResourceConstants.RUNTIME_CLASSPATH_TXT_PATH)
+
+        val args = LayoutlibResourceValueLoader.Args(distData, sampleAppRoot, classpathTxt)
+        val ex = assertThrows<IllegalArgumentException> {
+            LayoutlibResourceValueLoader.loadOrGet(args)
+        }
+        val message = ex.message
+        assertNotNull(message)
+        assertTrue(
+            message!!.contains("runtime-classpath.txt"),
+            "loud message must name the missing file. actual: $message",
+        )
+        assertTrue(
+            message.contains("assembleDebug"),
+            "loud message must surface remediation hint. actual: $message",
+        )
     }
 
     // Mock helper — 최소한의 distDataDir + sampleAppRoot + classpathTxt 구조

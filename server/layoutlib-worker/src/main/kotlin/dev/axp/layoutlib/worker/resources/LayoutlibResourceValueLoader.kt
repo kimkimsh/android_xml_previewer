@@ -40,7 +40,10 @@ internal object LayoutlibResourceValueLoader
         val tApp = ms(tApp0)
 
         val tAar0 = System.nanoTime()
-        val aarResults = if (args.runtimeClasspathTxt.exists()) AarResourceWalker.walkAll(args.runtimeClasspathTxt) else emptyList()
+        require(args.runtimeClasspathTxt.exists()) {
+            "runtime-classpath.txt missing: ${args.runtimeClasspathTxt} — run :app:assembleDebug to populate the AAR manifest before bundle build"
+        }
+        val aarResults = AarResourceWalker.walkAll(args.runtimeClasspathTxt)
         val tAar = ms(tAar0)
 
         // RES_AUTO bucket = app + aar 통합. 순회 순서: AAR (classpath txt 순) → app (마지막 — sample-app 정의 우선).

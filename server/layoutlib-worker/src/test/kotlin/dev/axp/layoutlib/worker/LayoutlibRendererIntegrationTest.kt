@@ -1,6 +1,7 @@
 package dev.axp.layoutlib.worker
 
 import com.android.ide.common.rendering.api.Result
+import dev.axp.layoutlib.worker.resources.AppLibraryResourceConstants
 import dev.axp.layoutlib.worker.resources.LayoutlibResourceValueLoader
 import dev.axp.layoutlib.worker.session.SessionConstants
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
+import kotlin.io.path.exists
 
 /**
  * Tier3 integration test — primary `activity_basic.xml` (ConstraintLayout / MaterialButton 포함)
@@ -101,6 +103,15 @@ class LayoutlibRendererIntegrationTest
             org.junit.jupiter.api.Assumptions.assumeTrue(
                 false,
                 "dist/fixture/moduleRoot 부재 — W3D3 helper 와 동일 graceful skip",
+            )
+            return null
+        }
+        val classpathTxt = moduleRoot.resolve(AppLibraryResourceConstants.RUNTIME_CLASSPATH_TXT_PATH)
+        if (!classpathTxt.exists())
+        {
+            org.junit.jupiter.api.Assumptions.assumeTrue(
+                false,
+                "runtime-classpath.txt missing — run :app:assembleDebug to populate the AAR manifest before bundle build",
             )
             return null
         }

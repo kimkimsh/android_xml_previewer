@@ -1,6 +1,7 @@
 package dev.axp.layoutlib.worker
 
 import com.android.ide.common.rendering.api.Result
+import dev.axp.layoutlib.worker.resources.AppLibraryResourceConstants
 import dev.axp.layoutlib.worker.session.SessionConstants
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
 import javax.imageio.ImageIO
+import kotlin.io.path.exists
 
 /**
  * W2D7-RENDERSESSION — Tier3 "아키텍처 positive evidence" + W3 carry placeholder.
@@ -47,6 +49,14 @@ class LayoutlibRendererTier3MinimalTest {
                 ?: error("fixture 없음 — fixture/sample-app 확인")
             val moduleRoot = FixtureDiscovery.locateModuleRoot(null)
                 ?: error("sample-app module root 없음 — fixture/sample-app 확인")
+            val classpathTxt = moduleRoot.resolve(AppLibraryResourceConstants.RUNTIME_CLASSPATH_TXT_PATH)
+            if (!classpathTxt.exists()) {
+                org.junit.jupiter.api.Assumptions.assumeTrue(
+                    false,
+                    "runtime-classpath.txt missing — run :app:assembleDebug to populate the AAR manifest before bundle build",
+                )
+                error("unreachable")
+            }
             return SharedLayoutlibRenderer.getOrCreate(
                 distDir = dist.toAbsolutePath().normalize(),
                 fixtureRoot = fixture.toAbsolutePath().normalize(),

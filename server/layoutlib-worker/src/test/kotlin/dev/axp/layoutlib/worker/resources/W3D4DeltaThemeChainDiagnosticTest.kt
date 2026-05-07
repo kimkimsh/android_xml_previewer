@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
+import kotlin.io.path.exists
 
 /**
  * Empirically narrows the Material TextAppearance sentinel root cause: loads the real
@@ -116,6 +117,12 @@ class W3D4DeltaThemeChainDiagnosticTest
         if (sampleApp == null)
         {
             assumeTrue(false, "module root 없음")
+            return null
+        }
+        val classpathTxt = sampleApp.resolve(AppLibraryResourceConstants.RUNTIME_CLASSPATH_TXT_PATH)
+        if (!classpathTxt.exists())
+        {
+            assumeTrue(false, "runtime-classpath.txt missing — run :app:assembleDebug to populate the AAR manifest before bundle build")
             return null
         }
         return dist.toAbsolutePath().normalize() to sampleApp.toAbsolutePath().normalize()

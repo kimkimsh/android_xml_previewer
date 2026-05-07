@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
+import kotlin.io.path.exists
 
 /**
  * W3D4 §3.4 (T9): MATERIAL-FIDELITY integration verification.
@@ -138,6 +139,12 @@ class MaterialFidelityIntegrationTest
         if (sampleApp == null)
         {
             assumeTrue(false, "module root 없음")
+            return null
+        }
+        val classpathTxt = sampleApp.resolve(AppLibraryResourceConstants.RUNTIME_CLASSPATH_TXT_PATH)
+        if (!classpathTxt.exists())
+        {
+            assumeTrue(false, "runtime-classpath.txt missing — run :app:assembleDebug to populate the AAR manifest before bundle build")
             return null
         }
         return dist.toAbsolutePath().normalize() to sampleApp.toAbsolutePath().normalize()
