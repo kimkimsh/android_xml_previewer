@@ -81,28 +81,24 @@ class LayoutlibRendererIntegrationTest
     }
 
     /**
-     * Single-widget Chip fixture acceptance gate. The test is disabled because
-     * Chip inflation surfaces two deeper layers beyond the drawable XML feed:
+     * Single-widget Chip fixture acceptance gate. Disabled until the remaining
+     * TextAppearance layer is wired:
      *
-     *  1. Chip's android:stateListAnimator (@animator/m3_chip_state_list_anim)
-     *     reaches AnimatorInflater.createStateListAnimatorFromXml without
-     *     MinimalLayoutlibCallback.getParser ever being called for ResourceType
-     *     .ANIMATOR — even though m3_chip_state_list_anim is present in the
-     *     RES_AUTO bucket animators map. The same animator path works for
-     *     MaterialButton's m3_btn_state_list_anim. The divergence implies a
-     *     Resources_Delegate.getAnimation_Original code-path difference
-     *     triggered by the <selector> root form rather than the <set> root
-     *     form Material uses for its button animator.
+     *   ChipDrawable.loadFromAttributes calls
+     *   MaterialResources.getTextAppearance(context, typedArray, index), which
+     *   returns null when typedArray.hasValue(index) is false or
+     *   typedArray.getResourceId(index, 0) yields 0. The ?attr/textAppearanceLabelLarge
+     *   chain must therefore land on an int resource id that maps back to the
+     *   @style/TextAppearance.Material3.LabelLarge style; today the path
+     *   surfaces NullPointerException at TextAppearance.getTextSize() because
+     *   the resolved styleId is unmapped.
      *
-     *  2. With android:stateListAnimator overridden to @null on the Chip,
-     *     inflation advances through extensive theme-attribute color-state-list
-     *     resolution but then throws NullPointerException on
-     *     com.google.android.material.resources.TextAppearance.getTextSize()
-     *     because the TextAppearance instance is null — indicating
-     *     ?attr/textAppearanceLabelLarge resolves to a value that ChipDrawable
-     *     loadFromAttributes cannot consume as a TextAppearance.
+     * The earlier <selector>-root callback bypass on android:stateListAnimator
+     * is no longer the blocker — that surface was caused by multi-line whitespace
+     * around @animator/m3_chip_state_list_anim in the chip style item, fixed in
+     * NamespaceAwareValueParser.handleStyle by trimming style item bodies.
      */
-    @Disabled("chip stateListAnimator callback bypass + ChipDrawable TextAppearance NPE — see KDoc above")
+    @Disabled("TextAppearance styleId mapping for ?attr/textAppearanceLabelLarge unresolved — see KDoc")
     @Test
     fun `tier3 chip — activity_chip renders SUCCESS via primary path`()
     {

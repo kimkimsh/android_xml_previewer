@@ -77,7 +77,7 @@ class NamespaceAwareValueParserTest
         }
         catch (e: IllegalStateException)
         {
-            assertTrue(e.message?.contains("파싱 실패") == true)
+            assertTrue(e.message?.contains("parse failed") == true)
         }
     }
 
@@ -220,6 +220,59 @@ class NamespaceAwareValueParserTest
         val entries = NamespaceAwareValueParser.parse(xml, ResourceNamespace.RES_AUTO, "com.foo")
         val attrs = entries.filterIsInstance<ParsedNsEntry.AttrDef>().map { it.name }.toSet()
         assertEquals(setOf("myAttr"), attrs)
+    }
+
+    @Test
+    fun `style item with multi-line whitespace content is trimmed to a clean reference token`()
+    {
+        // Material1.12.0 style entries that span multiple lines (e.g. Base.Widget.Material3.Chip's
+        // android:stateListAnimator) embed leading/trailing whitespace in the item body. The raw
+        // body is fed back to layoutlib through StyleItemResourceValueImpl, where unresolved
+        // whitespace pollutes the @ref token and causes BridgeContext.getXmlBlockParser to fall
+        // back to ParserFactory.create(value.getValue()) — a phantom-filename path that returns
+        // a KXmlParser without setInput(). The contract: style item bodies are reference / literal
+        // payloads, never display text, so leading/trailing whitespace is collapsed at parse time
+        // (mirrors AAPT2's normalised form).
+        val xml = tmp(
+            """<resources>
+                <style name="Base.Widget.Material3.Chip">
+                    <item name="android:stateListAnimator">
+                        @animator/m3_chip_state_list_anim
+                    </item>
+                    <item name="android:textAppearance">?attr/textAppearanceLabelLarge</item>
+                </style>
+            </resources>""",
+        )
+        val entries = NamespaceAwareValueParser.parse(xml, ResourceNamespace.RES_AUTO, "com.material")
+        val style = entries.single() as ParsedNsEntry.StyleDef
+        val byName = style.items.associateBy { it.name }
+        assertEquals(
+            "@animator/m3_chip_state_list_anim",
+            byName.getValue("android:stateListAnimator").value,
+            "multi-line item body must collapse to the bare reference token",
+        )
+        assertEquals(
+            "?attr/textAppearanceLabelLarge",
+            byName.getValue("android:textAppearance").value,
+            "single-line item body remains identical post-trim",
+        )
+    }
+
+    @Test
+    fun `string resource preserves intentional leading and trailing whitespace`()
+    {
+        // <string> content can carry intentional whitespace (i18n placeholders, padding around
+        // inline markup). The trim contract is restricted to <style><item> bodies — handleSimpleValue
+        // for STRING / DIMEN / etc. retains readElementText output verbatim.
+        val xml = tmp(
+            """<resources>
+                <string name="padded">  hello  </string>
+            </resources>""",
+        )
+        val entries = NamespaceAwareValueParser.parse(xml, ResourceNamespace.RES_AUTO, "com.foo")
+        val e = entries.single() as ParsedNsEntry.SimpleValue
+        assertEquals(ResourceType.STRING, e.type)
+        assertEquals("  hello  ", e.value, "string content whitespace must remain untouched")
     }
 
     private fun tmp(content: String): Path
