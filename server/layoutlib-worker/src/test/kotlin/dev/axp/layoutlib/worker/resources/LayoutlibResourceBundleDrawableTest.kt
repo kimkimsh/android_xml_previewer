@@ -55,7 +55,7 @@ class LayoutlibResourceBundleDrawableTest
     }
 
     @Test
-    fun `byType DRAWABLE receives placeholder ResourceValue alongside raw XML`()
+    fun `byType DRAWABLE receives per-name xml-suffixed placeholder ResourceValue alongside raw XML`()
     {
         val bundle = bundleWith(listOf(
             ParsedNsEntry.DrawableXml("foo", "<vector/>", ResourceNamespace.RES_AUTO, "p"),
@@ -63,7 +63,46 @@ class LayoutlibResourceBundleDrawableTest
         val ref = ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.DRAWABLE, "foo")
         val value = bundle.getResource(ref)
         assertNotNull(value)
-        assertEquals(AppLibraryResourceConstants.DRAWABLE_PLACEHOLDER_VALUE, value!!.value)
+        assertEquals(AppLibraryResourceConstants.drawablePlaceholderValue("foo"), value!!.value)
+    }
+
+    @Test
+    fun `drawable placeholder ends with xml suffix so layoutlib ResourceHelper getDrawable routes through getXmlBlockParser`()
+    {
+        // Contract: ResourceHelper.getDrawable gates the LayoutlibCallback.getParser
+        // path on `value.toLowerCase().endsWith(".xml") || resourceType == AAPT`. A
+        // drawable whose placeholder fails this gate falls through to the asset /
+        // file resource path and throws Resources$NotFoundException.
+        val bundle = bundleWith(listOf(
+            ParsedNsEntry.DrawableXml("abc_vector_test", "<vector/>", ResourceNamespace.RES_AUTO, "appcompat"),
+        ))
+        val ref = ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.DRAWABLE, "abc_vector_test")
+        val value = bundle.getResource(ref)
+        assertNotNull(value)
+        assertTrue(
+            value!!.value!!.lowercase().endsWith(".xml"),
+            "drawable placeholder must end with .xml so ResourceHelper.getDrawable invokes getXmlBlockParser",
+        )
+    }
+
+    @Test
+    fun `drawable placeholder is unique per name to avoid sDrawableCache aliasing`()
+    {
+        // Contract: Resources_Delegate.getDrawable consults a JVM-static sDrawableCache
+        // (LruCache) keyed by the value string before delegating to
+        // ResourceHelper.getDrawable. A shared placeholder would alias every
+        // subsequent drawable lookup to the first drawable's ConstantState.
+        val bundle = bundleWith(listOf(
+            ParsedNsEntry.DrawableXml("a", "<vector/>", ResourceNamespace.RES_AUTO, "p"),
+            ParsedNsEntry.DrawableXml("b", "<vector/>", ResourceNamespace.RES_AUTO, "p"),
+        ))
+        val refA = ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.DRAWABLE, "a")
+        val refB = ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.DRAWABLE, "b")
+        val valueA = bundle.getResource(refA)!!.value
+        val valueB = bundle.getResource(refB)!!.value
+        assertNotNull(valueA)
+        assertNotNull(valueB)
+        assertTrue(valueA != valueB, "per-drawable placeholder must differ across names")
     }
 
     @Test

@@ -257,7 +257,7 @@ internal class LayoutlibResourceBundle private constructor(
                         val ref = ResourceReference(ns, ResourceType.DRAWABLE, e.name)
                         typeMap[e.name] = ResourceValueImpl(
                             ref,
-                            AppLibraryResourceConstants.DRAWABLE_PLACEHOLDER_VALUE,
+                            AppLibraryResourceConstants.drawablePlaceholderValue(e.name),
                             null,
                         )
                     }

@@ -1,28 +1,23 @@
 package dev.axp.layoutlib.worker.resources
 
-/**
- * W3D4 MATERIAL-FIDELITY (08 §7.7.6, 본 spec §3.1 #1):
- * AAR walker / resolver chain / dedupe diagnostic 의 도메인 상수.
- * CLAUDE.md "Zero Tolerance for Magic Numbers/Strings" 준수.
- */
+/** Domain constants for the AAR walker, resolver chain, and dedupe diagnostics. */
 internal object AppLibraryResourceConstants
 {
 
-    /** sample-app `assembleDebug` 가 emit 하는 runtime-classpath manifest 의 module-relative 경로. */
+    /** Module-relative path of the runtime-classpath manifest emitted by sample-app `assembleDebug`. */
     const val RUNTIME_CLASSPATH_TXT_PATH = "app/build/axp/runtime-classpath.txt"
 
     /** AAR ZIP entry — values.xml. */
     const val AAR_VALUES_XML_PATH = "res/values/values.xml"
 
     /**
-     * W3D4-β T12: AAR ZIP entry prefix — color state-list XML 디렉토리.
-     * 예: material-1.12.0 의 res/color/m3_highlighted_text.xml. 실측 default `res/color/`
-     * 합계 192 files (material 171 + appcompat 21). qualifier 디렉토리 (color-v31/,
-     * color-night-v8/, color-v23/) 는 W4+ density/locale/night-mode 지원 시 추가.
+     * AAR ZIP entry prefix — color state-list XML directory (default qualifier only).
+     * Qualifier directories (color-v31/, color-night-v8/, color-v23/, …) are out of
+     * scope until density / locale / night-mode support lands.
      */
     const val AAR_COLOR_DIR_PREFIX = "res/color/"
 
-    /** AAR ZIP entry prefix — animator / motion-spec XML 디렉토리 (sibling to AAR_COLOR_DIR_PREFIX). */
+    /** AAR ZIP entry prefix — animator / motion-spec XML directory (sibling to AAR_COLOR_DIR_PREFIX). */
     const val AAR_ANIMATOR_DIR_PREFIX = "res/animator/"
 
     /**
@@ -38,54 +33,87 @@ internal object AppLibraryResourceConstants
      */
     const val AAR_DRAWABLE_DIR_PREFIX = "res/drawable/"
 
-    /** color / animator / drawable XML 파일 확장자. */
+    /** File extension shared by color / animator / drawable XML resources. */
     const val COLOR_XML_SUFFIX = ".xml"
 
     /**
-     * W3D4-β T12: color state list ResourceValue 의 placeholder value. callback.getParser
-     * 가 ILayoutPullParser 를 반환하므로 Bridge fallback (ParserFactory.create(value)) 에
-     * 도달하지 않음 — 단지 non-null marker. 진단 시 식별 용이성을 위해 의도된 magic prefix.
+     * Color-state-list ResourceValue placeholder. The `LayoutlibCallback.getParser`
+     * implementation returns an `ILayoutPullParser` for COLOR refs from the raw-XML
+     * map, so Bridge never falls back to `ParserFactory.create(value)` and the value
+     * string only needs to be a non-null sentinel. The `@axp:` prefix keeps the
+     * sentinel identifiable in diagnostic logs.
      */
     const val COLOR_STATE_LIST_PLACEHOLDER_VALUE = "@axp:color-state-list"
 
     /** Animator-XML ResourceValue placeholder — sibling to COLOR_STATE_LIST_PLACEHOLDER_VALUE. */
     const val ANIMATOR_PLACEHOLDER_VALUE = "@axp:animator-xml"
 
-    /** Drawable-XML ResourceValue placeholder — sibling to ANIMATOR_PLACEHOLDER_VALUE. */
-    const val DRAWABLE_PLACEHOLDER_VALUE = "@axp:drawable-xml"
+    /**
+     * Drawable-XML ResourceValue placeholder generator.
+     *
+     * Two non-obvious layoutlib contracts force the value shape to be (a) per-drawable
+     * unique and (b) `.xml`-suffixed:
+     *
+     *  - `com.android.layoutlib.bridge.impl.ResourceHelper.getDrawable(ResourceValue,
+     *    BridgeContext, Theme)` routes through `getXmlBlockParser` (which calls
+     *    `LayoutlibCallback.getParser`) only when `value.toLowerCase().endsWith(".xml")`
+     *    OR `resourceType == AAPT`. A DRAWABLE-typed bundle entry whose value does not
+     *    end with `.xml` falls through to the asset / file resource path, which fails
+     *    `AssetRepository.isFileResource` and returns null, causing
+     *    `Resources_Delegate.throwException` to raise `Resources$NotFoundException` with
+     *    "Could not find drawable resource matching value …".
+     *
+     *  - `android.content.res.Resources_Delegate.getDrawable` consults a JVM-static
+     *    `sDrawableCache` (LruCache) keyed by the value string before delegating to
+     *    `ResourceHelper.getDrawable`. A single shared placeholder for all drawables
+     *    would alias every subsequent lookup to the first drawable's `ConstantState`,
+     *    so the placeholder must encode the drawable name to give each entry a unique
+     *    cache key.
+     *
+     * `Resources_Delegate.getAnimation` and the ColorStateList path do not pass through
+     * the same `.xml` gate, so `ANIMATOR_PLACEHOLDER_VALUE` and
+     * `COLOR_STATE_LIST_PLACEHOLDER_VALUE` remain static sentinels — only DRAWABLE needs
+     * the per-name path-shaped value.
+     */
+    const val DRAWABLE_PLACEHOLDER_PREFIX = "axp/drawable/"
+    const val DRAWABLE_PLACEHOLDER_SUFFIX = ".xml"
 
-    /** AAR ZIP entry — AndroidManifest.xml (package 추출용). */
+    fun drawablePlaceholderValue(name: String): String =
+        DRAWABLE_PLACEHOLDER_PREFIX + name + DRAWABLE_PLACEHOLDER_SUFFIX
+
+    /** AAR ZIP entry — AndroidManifest.xml (used to extract the package attribute). */
     const val AAR_ANDROID_MANIFEST_PATH = "AndroidManifest.xml"
 
-    /** sample-app res/values/ — module root 기준. */
+    /** sample-app `res/values/`, relative to the sample-app module root. */
     const val SAMPLE_APP_RES_VALUES_RELATIVE_PATH = "app/src/main/res/values"
 
-    /** AndroidManifest.xml 의 `package="..."` 추출 regex. plain-text manifest 가정 (W3D4 §4.2). */
+    /** Extracts the `package="..."` attribute from an AAR's plain-text AndroidManifest.xml. */
     val MANIFEST_PACKAGE_REGEX: Regex = Regex("""package\s*=\s*"([^"]+)"""")
 
-    /** chain walker (?attr / @ref) 의 무한 루프 방지 hop limit. 일반 attr ref chain 3-5 hop. */
+    /** Hop limit for the chain walker (?attr / @ref) to bound resolution depth. */
     const val MAX_REF_HOPS = 10
 
     /**
-     * theme stack parent walk 의 무한 루프 방지 hop limit. v2 round 2 follow-up #5:
-     * 실측 chain depth = 17 edges (Theme.AxpFixture → ... → android:Theme.Holo.Light → Theme.Light → Theme).
-     * ThemeOverlay 추가 5-10 가능 → buffer 포함 32.
+     * Hop limit for the theme stack parent walk. The Theme.AxpFixture → … →
+     * android:Theme chain measures at 17 edges in the current fixture; ThemeOverlay
+     * additions can lengthen it by 5-10, so 32 leaves buffer headroom.
      */
     const val MAX_THEME_HOPS = 32
 
-    /** loadAarRes 에서 AAR 1+ 의 values.xml 도 못 찾으면 sanity guard. */
+    /** Sanity guard — at least one AAR must contribute a `values.xml`, or `loadAarRes` fails loudly. */
     const val MIN_AAR_WITH_VALUES_THRESHOLD = 1
 
     /**
-     * v2 round 2 follow-up #3: ResourceUrl 의 sentinel literal. resolveResValue 가 만나면
-     * 즉시 raw value 반환 (parse 시도 안 함). 27 AAR 안 @null 106회 / @empty 2회 출현 (Codex Q1 실측).
+     * Sentinel literals consumed by `resolveResValue`: when encountered, the chain
+     * walker returns the raw value rather than attempting to parse it as a reference.
      */
     const val RES_VALUE_NULL_LITERAL = "@null"
     const val RES_VALUE_EMPTY_LITERAL = "@empty"
 
     /**
-     * v2 round 2 follow-up #6: android: style parent normalization 용 prefix.
-     * 예: parentStyleName = "android:Theme.Holo.Light" → namespace=ANDROID + name="Theme.Holo.Light" 로 lookup.
+     * Prefix used to normalize `android:`-qualified style parent names — e.g.
+     * `parentStyleName = "android:Theme.Holo.Light"` is rewritten to namespace=ANDROID
+     * + name="Theme.Holo.Light" before bundle lookup.
      */
     const val ANDROID_NS_PREFIX = "android"
     const val NS_NAME_SEPARATOR = ":"

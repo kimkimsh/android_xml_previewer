@@ -7,25 +7,20 @@ import dev.axp.layoutlib.worker.session.SessionConstants
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.nio.file.Path
 import kotlin.io.path.exists
 
 /**
- * Tier3 integration test — primary `activity_basic.xml` (ConstraintLayout / MaterialButton 포함)
- * 가 직접 SUCCESS 로 렌더되는지 + minimal carry (`activity_basic_minimal.xml`) 별도 smoke 확인.
+ * Tier 3 integration test suite — verifies that the layoutlib rendering pipeline
+ * produces a Result.Status.SUCCESS plus a valid PNG for each fixture layout
+ * (`activity_basic.xml`, `activity_basic_minimal.xml`, `activity_chip.xml`).
  *
- * **W3D4 acceptance gate** (T9): W3D4 Material-fidelity 의 의도 (Theme.AxpFixture +
- * Material3 chain + colorPrimary resolve → MaterialButton 정상 inflate) 가 작동해야
- * primary test 가 PASS. round 2 ξ 결정으로 W3D3-α 의 `renderWithMaterialFallback` helper
- * (Material/ThemeEnforcement fail 시 minimal 으로 retry) 는 폐기 — primary 는 직접 SUCCESS 강제.
- *
- *  - SampleAppClassLoader 가 sample-app 의 AAR + R.jar 를 host JVM 에 적재.
- *  - MinimalLayoutlibCallback.loadView 가 reflection-instantiate.
- *  - LayoutlibResourceValueLoader (3-입력 통합) + LayoutlibRenderResources (Q3 σ FULL chain walker)
- *    가 wire 되어 Theme.AxpFixture → Theme.Material3.* → Theme.AppCompat → Theme parent walk 작동.
+ * The primary test exercises the full Material-fidelity chain — Theme.AxpFixture
+ * parented through Theme.Material3.* and Theme.AppCompat back to Theme — wired
+ * through SampleAppClassLoader, MinimalLayoutlibCallback (reflection-based view
+ * instantiation), and LayoutlibRenderResources (chain walker + theme stack).
  */
 @Tag("integration")
 class LayoutlibRendererIntegrationTest
@@ -34,13 +29,13 @@ class LayoutlibRendererIntegrationTest
     @BeforeEach
     fun resetBundleCache()
     {
-        // W3D4-β T13 (round 3 reconcile, Claude Q6.3): JVM-wide bundle cache 가 stale 면
-        // T11/T12 효과 측정 무효화 가능. 각 test 시작 시 명시 clear.
+        // The bundle cache is JVM-static; clearing it between tests prevents
+        // cross-test ConstantState contamination from masking real regressions.
         LayoutlibResourceValueLoader.clearCache()
     }
 
     @Test
-    fun `tier3 basic primary — activity_basic 가 직접 SUCCESS`()
+    fun `tier3 basic primary — activity_basic renders SUCCESS via primary path`()
     {
         val (dist, layoutRoot, moduleRoot) = locateAll() ?: return
         val renderer = SharedLayoutlibRenderer.getOrCreate(
@@ -57,7 +52,7 @@ class LayoutlibRendererIntegrationTest
             "primary SUCCESS",
         )
         assertTrue(bytes.size > MIN_RENDERED_PNG_BYTES, "PNG > $MIN_RENDERED_PNG_BYTES")
-        assertTrue(isPngMagic(bytes), "PNG magic 헤더")
+        assertTrue(isPngMagic(bytes), "PNG magic header")
     }
 
     @Test
@@ -81,21 +76,13 @@ class LayoutlibRendererIntegrationTest
     }
 
     /**
-     * Single-widget Chip fixture acceptance gate. Disabled until the remaining
-     * drawable lookup layer is wired:
-     *
-     *   AppCompat declares R.drawable.abc_vector_test (vector XML in
-     *   appcompat-resources-1.6.1.aar at res/drawable/abc_vector_test.xml,
-     *   resource id 0x7F070076 per the runtime R.txt) and ChipDrawable's
-     *   inflation chain reaches it through some default-drawable path.
-     *   Layoutlib raises Resources$NotFoundException with message "Could not
-     *   find drawable resource matching value 0x7F070076 (resolved name:
-     *   abc_vector_test) in current configuration", and
-     *   MinimalLayoutlibCallback.getParser is never invoked for that
-     *   ResourceReference — Resources_Delegate.getDrawable does its own bundle
-     *   lookup before the callback fallback, bypassing the worker-side feed.
+     * Single-widget Chip fixture acceptance gate. Verifies the full Material 3 chip
+     * inflation chain — `<style><item>` body trim (style-item reference tokens),
+     * `<macro>` design-token indirection (`@macro/m3_comp_assist_chip_label_text_type`),
+     * and the per-name `.xml`-suffixed drawable placeholder that lets
+     * `ResourceHelper.getDrawable` route through `LayoutlibCallback.getParser` for
+     * AAR-side raw drawable XML such as `R.drawable.abc_vector_test`.
      */
-    @Disabled("Drawable abc_vector_test lookup path bypasses callback — see KDoc")
     @Test
     fun `tier3 chip — activity_chip renders SUCCESS via primary path`()
     {
@@ -123,13 +110,9 @@ class LayoutlibRendererIntegrationTest
             bytes[2] == PNG_MAGIC_BYTE_2 && bytes[3] == PNG_MAGIC_BYTE_3
 
     /**
-     * v2 round 2 follow-up #4 (Codex Q3 + Claude Q3 FULL convergence DISAGREE):
-     * plan v1 placeholder `/* W3D3 의 helper 재활용 */ ...` → explicit body.
-     *
-     * W3D3 의 기존 3개 helper (locateDistDir / locateFixtureRoot / locateSampleAppModuleRoot)
-     * 는 dist/fixture 가 `assumeTrue` graceful 하지만 module root 는 `requireNotNull` 강제 throw
-     * 였음. v2 가 module root 도 graceful 으로 통일 (CI 환경에 sample-app 부재 시 SKIP — primary
-     * test 가 dist/fixture/module 모두 의존).
+     * Resolves dist + fixture + sample-app module root for a Tier 3 render. Returns
+     * null and skips the calling test (via JUnit `assumeTrue(false, …)`) when any of
+     * the three is absent — primary tests depend on all three being on disk.
      */
     private fun locateAll(): Triple<Path, Path, Path>?
     {
@@ -140,7 +123,7 @@ class LayoutlibRendererIntegrationTest
         {
             org.junit.jupiter.api.Assumptions.assumeTrue(
                 false,
-                "dist/fixture/moduleRoot 부재 — W3D3 helper 와 동일 graceful skip",
+                "dist / fixture / moduleRoot missing — graceful skip",
             )
             return null
         }
