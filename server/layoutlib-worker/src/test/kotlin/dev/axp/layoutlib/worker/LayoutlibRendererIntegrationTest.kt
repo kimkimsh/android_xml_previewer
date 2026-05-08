@@ -82,23 +82,20 @@ class LayoutlibRendererIntegrationTest
 
     /**
      * Single-widget Chip fixture acceptance gate. Disabled until the remaining
-     * TextAppearance layer is wired:
+     * drawable lookup layer is wired:
      *
-     *   ChipDrawable.loadFromAttributes calls
-     *   MaterialResources.getTextAppearance(context, typedArray, index), which
-     *   returns null when typedArray.hasValue(index) is false or
-     *   typedArray.getResourceId(index, 0) yields 0. The ?attr/textAppearanceLabelLarge
-     *   chain must therefore land on an int resource id that maps back to the
-     *   @style/TextAppearance.Material3.LabelLarge style; today the path
-     *   surfaces NullPointerException at TextAppearance.getTextSize() because
-     *   the resolved styleId is unmapped.
-     *
-     * The earlier <selector>-root callback bypass on android:stateListAnimator
-     * is no longer the blocker — that surface was caused by multi-line whitespace
-     * around @animator/m3_chip_state_list_anim in the chip style item, fixed in
-     * NamespaceAwareValueParser.handleStyle by trimming style item bodies.
+     *   AppCompat declares R.drawable.abc_vector_test (vector XML in
+     *   appcompat-resources-1.6.1.aar at res/drawable/abc_vector_test.xml,
+     *   resource id 0x7F070076 per the runtime R.txt) and ChipDrawable's
+     *   inflation chain reaches it through some default-drawable path.
+     *   Layoutlib raises Resources$NotFoundException with message "Could not
+     *   find drawable resource matching value 0x7F070076 (resolved name:
+     *   abc_vector_test) in current configuration", and
+     *   MinimalLayoutlibCallback.getParser is never invoked for that
+     *   ResourceReference — Resources_Delegate.getDrawable does its own bundle
+     *   lookup before the callback fallback, bypassing the worker-side feed.
      */
-    @Disabled("TextAppearance styleId mapping for ?attr/textAppearanceLabelLarge unresolved — see KDoc")
+    @Disabled("Drawable abc_vector_test lookup path bypasses callback — see KDoc")
     @Test
     fun `tier3 chip — activity_chip renders SUCCESS via primary path`()
     {

@@ -101,6 +101,8 @@ internal object NamespaceAwareValueParser
                     {
                         TAG_DIMEN, TAG_INTEGER, TAG_BOOL, TAG_COLOR, TAG_STRING, TAG_FRACTION ->
                             handleSimpleValue(reader, namespace, sourcePackage)?.let { entries += it }
+                        TAG_MACRO ->
+                            handleMacro(reader, namespace, sourcePackage)?.let { entries += it }
                         TAG_STYLE ->
                             handleStyle(reader, namespace, sourcePackage)?.let { entries += it }
                         TAG_ATTR ->
@@ -178,6 +180,31 @@ internal object NamespaceAwareValueParser
         // <xliff:g> placeholders.
         val value = readElementText(reader)
         return ParsedNsEntry.SimpleValue(type, name, value, namespace, sourcePackage)
+    }
+
+    /**
+     * Material 3 introduces <macro> as an AAPT2 resource type for design-token
+     * indirection (e.g. `<macro name="m3_comp_assist_chip_label_text_type">
+     * ?attr/textAppearanceLabelLarge</macro>`). The macro body is a single
+     * reference expression, never display text — the chain walker chases
+     * `@macro/foo` through the MACRO bucket and continues with the body's
+     * own ?attr/... or @style/... reference. The trim follows the style item
+     * body policy: whitespace pollutes the @ref tokenizer when the AAR
+     * formatter spreads the value across lines.
+     */
+    private fun handleMacro(
+        reader: XMLStreamReader,
+        namespace: ResourceNamespace,
+        sourcePackage: String?,
+    ): ParsedNsEntry.SimpleValue?
+    {
+        val name = reader.getAttributeValue(null, ATTR_NAME) ?: return null
+        if (name.isEmpty())
+        {
+            return null
+        }
+        val body = readElementText(reader).trim()
+        return ParsedNsEntry.SimpleValue(ResourceType.MACRO, name, body, namespace, sourcePackage)
     }
 
     private fun handleStyle(
@@ -408,6 +435,7 @@ internal object NamespaceAwareValueParser
     private const val TAG_DECLARE_STYLEABLE = "declare-styleable"
     private const val TAG_ENUM = "enum"
     private const val TAG_FLAG = "flag"
+    private const val TAG_MACRO = "macro"
 
     private const val ATTR_NAME = "name"
     private const val ATTR_PARENT = "parent"

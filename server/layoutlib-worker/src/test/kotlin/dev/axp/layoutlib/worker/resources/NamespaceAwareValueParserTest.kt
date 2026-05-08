@@ -223,6 +223,41 @@ class NamespaceAwareValueParserTest
     }
 
     @Test
+    fun `macro element is parsed as ResourceType MACRO with trimmed body`()
+    {
+        // Material 3 introduces <macro> for design-token indirection. The macro body is a
+        // single reference expression (?attr/..., @style/..., @color/..., etc.), never
+        // display text — the chain walker must be able to chase @macro/foo through the
+        // MACRO bucket. Whitespace around the body is trimmed for the same reason
+        // <style><item> bodies are trimmed: the @ref tokenizer rejects whitespace-padded
+        // @ref tokens. Without parsing macro elements, ChipDrawable.loadFromAttributes
+        // (and any other strict consumer of MaterialResources.getTextAppearance) sees
+        // BridgeTypedArray.getResourceId return 0 because the resolved StyleItem still
+        // carries the literal `@macro/...` string rather than a StyleResourceValue.
+        val xml = tmp(
+            """<resources>
+                <macro name="m3_comp_assist_chip_label_text_type">?attr/textAppearanceLabelLarge</macro>
+                <macro name="m3_comp_extended_fab_primary_label_text_type">
+                    ?attr/textAppearanceLabelLarge
+                </macro>
+            </resources>""",
+        )
+        val entries = NamespaceAwareValueParser.parse(xml, ResourceNamespace.RES_AUTO, "com.material")
+        val byName = entries.filterIsInstance<ParsedNsEntry.SimpleValue>().associateBy { it.name }
+        assertEquals(2, byName.size, "both macro entries emitted")
+        val singleLine = byName.getValue("m3_comp_assist_chip_label_text_type")
+        assertEquals(ResourceType.MACRO, singleLine.type)
+        assertEquals("?attr/textAppearanceLabelLarge", singleLine.value)
+        val multiLine = byName.getValue("m3_comp_extended_fab_primary_label_text_type")
+        assertEquals(ResourceType.MACRO, multiLine.type)
+        assertEquals(
+            "?attr/textAppearanceLabelLarge",
+            multiLine.value,
+            "multi-line macro body trims to bare reference token",
+        )
+    }
+
+    @Test
     fun `style item with multi-line whitespace content is trimmed to a clean reference token`()
     {
         // Material1.12.0 style entries that span multiple lines (e.g. Base.Widget.Material3.Chip's
