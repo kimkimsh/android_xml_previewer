@@ -15,12 +15,13 @@ import java.util.zip.ZipFile
  *  - res/animator/<name>.xml — AnimatorXml raw bodies (default qualifier only).
  *  - res/drawable/<name>.xml — DrawableXml raw bodies (default qualifier only).
  *  - res/interpolator/<name>.xml — InterpolatorXml raw bodies (default qualifier only).
+ *  - res/layout/<name>.xml — LayoutXml raw bodies (default qualifier only).
  *
- * Qualifier directories (color-v31/, animator-v21/, drawable-night/, etc.) stay
- * out of scope until density / locale / night-mode support is wired. The walker
- * captures raw XML strings only — selector / vector / animator parsing is
- * delegated to layoutlib's Bridge via MinimalLayoutlibCallback.getParser. AARs
- * lacking all five resource sources are skipped with a single diagnostic line.
+ * Qualifier directories (color-v31/, animator-v21/, drawable-night/, layout-v21/,
+ * etc.) stay out of scope until density / locale / night-mode support is wired.
+ * The walker captures raw XML strings only — selector / vector / animator / layout
+ * parsing is delegated to layoutlib's Bridge via MinimalLayoutlibCallback.getParser.
+ * AARs lacking all six resource sources are skipped with a single diagnostic line.
  */
 internal object AarResourceWalker
 {
@@ -43,6 +44,7 @@ internal object AarResourceWalker
         var totalAnimatorXmls = 0
         var totalDrawableXmls = 0
         var totalInterpolatorXmls = 0
+        var totalLayoutXmls = 0
         for (aar in aarPaths)
         {
             val r = walkOne(aar)
@@ -53,6 +55,7 @@ internal object AarResourceWalker
                 totalAnimatorXmls += r.entries.count { it is ParsedNsEntry.AnimatorXml }
                 totalDrawableXmls += r.entries.count { it is ParsedNsEntry.DrawableXml }
                 totalInterpolatorXmls += r.entries.count { it is ParsedNsEntry.InterpolatorXml }
+                totalLayoutXmls += r.entries.count { it is ParsedNsEntry.LayoutXml }
             }
             else
             {
@@ -61,7 +64,7 @@ internal object AarResourceWalker
         }
         val tMs = (System.nanoTime() - t0) / 1_000_000
         System.err.println(
-            "[AarResourceWalker] walked ${aarPaths.size} AARs (${results.size} with res, $skipped code-only, $totalColorXmls color-state-lists, $totalAnimatorXmls animator-xmls, $totalDrawableXmls drawable-xmls, $totalInterpolatorXmls interpolator-xmls) in ${tMs}ms",
+            "[AarResourceWalker] walked ${aarPaths.size} AARs (${results.size} with res, $skipped code-only, $totalColorXmls color-state-lists, $totalAnimatorXmls animator-xmls, $totalDrawableXmls drawable-xmls, $totalInterpolatorXmls interpolator-xmls, $totalLayoutXmls layout-xmls) in ${tMs}ms",
         )
         return results
     }
@@ -85,24 +88,26 @@ internal object AarResourceWalker
             val animatorEntries: List<ParsedNsEntry> = collectAnimatorXmls(zip, pkg)
             val drawableEntries: List<ParsedNsEntry> = collectDrawableXmls(zip, pkg)
             val interpolatorEntries: List<ParsedNsEntry> = collectInterpolatorXmls(zip, pkg)
+            val layoutEntries: List<ParsedNsEntry> = collectLayoutXmls(zip, pkg)
 
-            // If any of values / color / animator / drawable / interpolator are present
-            // the AAR contributes resources. All absent means truly code-only.
+            // If any of values / color / animator / drawable / interpolator / layout
+            // are present the AAR contributes resources. All absent means truly
+            // code-only.
             if (valuesEntries.isEmpty() && colorEntries.isEmpty() &&
                 animatorEntries.isEmpty() && drawableEntries.isEmpty() &&
-                interpolatorEntries.isEmpty())
+                interpolatorEntries.isEmpty() && layoutEntries.isEmpty())
             {
                 if (valuesEntry == null)
                 {
                     System.err.println(
-                        "[AarResourceWalker] $aarPath skipped — res/values/values.xml + res/color/{name}.xml + res/animator/{name}.xml + res/drawable/{name}.xml + res/interpolator/{name}.xml all absent (pkg=$pkg)",
+                        "[AarResourceWalker] $aarPath skipped — res/values/values.xml + res/color/{name}.xml + res/animator/{name}.xml + res/drawable/{name}.xml + res/interpolator/{name}.xml + res/layout/{name}.xml all absent (pkg=$pkg)",
                     )
                 }
                 return null
             }
             return Result(
                 pkg,
-                valuesEntries + colorEntries + animatorEntries + drawableEntries + interpolatorEntries,
+                valuesEntries + colorEntries + animatorEntries + drawableEntries + interpolatorEntries + layoutEntries,
             )
         }
     }
@@ -232,6 +237,38 @@ internal object AarResourceWalker
             if (baseName.isEmpty()) continue
             val rawXml = zip.getInputStream(e).bufferedReader().use { it.readText() }
             out += ParsedNsEntry.InterpolatorXml(baseName, rawXml, ResourceNamespace.RES_AUTO, pkg)
+        }
+        return out
+    }
+
+    /**
+     * Sibling to collectInterpolatorXmls / collectDrawableXmls for
+     * `res/layout/<name>.xml`. AppCompat / core / Material AARs ship internal
+     * layout files (e.g. design_text_input_start_icon for TextInputLayout's
+     * leading icon container, design_navigation_item for NavigationView). Widget
+     * code inflates them via `LayoutInflater.from(ctx).inflate(R.layout.<name>,
+     * parent, attachToRoot)`, which routes through Resources_Delegate.getLayout
+     * → ResourceHelper.getXmlBlockParser → callback.getParser. Default qualifier
+     * directory only — layout-v21/, layout-night/, etc. stay out of scope until
+     * W4+ qualifier support.
+     */
+    private fun collectLayoutXmls(zip: ZipFile, pkg: String): List<ParsedNsEntry>
+    {
+        val out = mutableListOf<ParsedNsEntry>()
+        val entries = zip.entries()
+        while (entries.hasMoreElements())
+        {
+            val e = entries.nextElement()
+            if (e.isDirectory) continue
+            val n = e.name
+            if (!n.startsWith(AppLibraryResourceConstants.AAR_LAYOUT_DIR_PREFIX)) continue
+            if (!n.endsWith(AppLibraryResourceConstants.COLOR_XML_SUFFIX)) continue
+            val rel = n.substring(AppLibraryResourceConstants.AAR_LAYOUT_DIR_PREFIX.length)
+            if (rel.contains('/')) continue
+            val baseName = rel.removeSuffix(AppLibraryResourceConstants.COLOR_XML_SUFFIX)
+            if (baseName.isEmpty()) continue
+            val rawXml = zip.getInputStream(e).bufferedReader().use { it.readText() }
+            out += ParsedNsEntry.LayoutXml(baseName, rawXml, ResourceNamespace.RES_AUTO, pkg)
         }
         return out
     }

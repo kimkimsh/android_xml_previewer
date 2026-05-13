@@ -102,6 +102,20 @@ internal class LayoutlibResourceBundle private constructor(
     fun getInterpolatorXml(ref: ResourceReference): String? =
         byNs[ref.namespace]?.interpolators?.get(ref.name)
 
+    /**
+     * Sibling to getInterpolatorXml — layout XML body lookup. MinimalLayoutlibCallback
+     * .getParser routes ResourceType.LAYOUT through the same raw-XML feed mechanism;
+     * layoutlib's `Resources_Delegate.getLayout` (offset 829-872) delegates to
+     * `ResourceHelper.getXmlBlockParser` (constant pool index `#476`, identical to
+     * getXml / getAnimation), which calls `LayoutlibCallback.getParser` for non-
+     * framework values. Covers the AppCompat / core / Material AAR-internal layout
+     * XMLs that widgets inflate via `LayoutInflater.from(ctx).inflate(R.layout.<name>,
+     * parent, attachToRoot)` — e.g. design_text_input_start_icon for TextInputLayout's
+     * leading icon container.
+     */
+    fun getLayoutXml(ref: ResourceReference): String? =
+        byNs[ref.namespace]?.layouts?.get(ref.name)
+
     /** Diagnostic / test accessors. */
     fun namespacesInOrder(): List<ResourceNamespace> = byNs.keys.toList()
     fun styleCountForNamespace(ns: ResourceNamespace): Int = byNs[ns]?.styles?.size ?: 0
@@ -114,6 +128,8 @@ internal class LayoutlibResourceBundle private constructor(
         byNs[ns]?.drawables?.size ?: 0
     fun interpolatorXmlCountForNamespace(ns: ResourceNamespace): Int =
         byNs[ns]?.interpolators?.size ?: 0
+    fun layoutXmlCountForNamespace(ns: ResourceNamespace): Int =
+        byNs[ns]?.layouts?.size ?: 0
 
     /**
      * Exports framework (ANDROID-bucket) enum and flag tables for Bridge.init's
@@ -175,6 +191,7 @@ internal class LayoutlibResourceBundle private constructor(
             val animatorsMut = LinkedHashMap<String, String>()
             val drawablesMut = LinkedHashMap<String, String>()
             val interpolatorsMut = LinkedHashMap<String, String>()
+            val layoutsMut = LinkedHashMap<String, String>()
 
             for (e in entries) when (e)
             {
@@ -313,6 +330,29 @@ internal class LayoutlibResourceBundle private constructor(
                         interpolatorsMut[e.name] = e.rawXml
                     }
                 }
+                is ParsedNsEntry.LayoutXml ->
+                {
+                    val typeMap = byTypeMut.getOrPut(ResourceType.LAYOUT) { mutableMapOf() }
+                    if (!typeMap.containsKey(e.name))
+                    {
+                        val ref = ResourceReference(ns, ResourceType.LAYOUT, e.name)
+                        typeMap[e.name] = ResourceValueImpl(
+                            ref,
+                            AppLibraryResourceConstants.layoutPlaceholderValue(e.name),
+                            null,
+                        )
+                    }
+                    if (layoutsMut.containsKey(e.name))
+                    {
+                        System.err.println(
+                            "[LayoutlibResourceBundle] dup layout-xml '${e.name}' ns=${ns.packageName ?: "RES_AUTO"} from ${e.sourcePackage} — first-wins",
+                        )
+                    }
+                    else
+                    {
+                        layoutsMut[e.name] = e.rawXml
+                    }
+                }
             }
 
             val allStyleNames: Set<String> = styleDefs.mapTo(HashSet()) { it.name }
@@ -349,6 +389,7 @@ internal class LayoutlibResourceBundle private constructor(
                 animators = animatorsMut.toMap(),
                 drawables = drawablesMut.toMap(),
                 interpolators = interpolatorsMut.toMap(),
+                layouts = layoutsMut.toMap(),
             )
         }
     }

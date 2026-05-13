@@ -8,18 +8,19 @@ import com.android.resources.ResourceType
 /**
  * Single-namespace immutable container holding the resource shape that
  * LayoutlibResourceBundle.byNs maps each ResourceNamespace to. Splits resources
- * across four maps:
+ * across maps:
  *  - byType: generic ResourceValue keyed by ResourceType + name (covers SimpleValue
- *    plus the placeholder ResourceValue for color-state-list / animator / drawable
- *    entries that gives BridgeContext's getResource a non-null value to return).
+ *    plus the placeholder ResourceValue for color-state-list / animator / drawable /
+ *    interpolator / layout entries that gives BridgeContext's getResource a non-null
+ *    value to return).
  *  - styles / attrs: type-specific maps preserving StyleResourceValue and
  *    AttrResourceValue runtime types that the bridge casts to after defStyleAttr /
  *    defStyleRes resolution.
- *  - colorStateLists / animators / drawables / interpolators: name → raw XML body,
- *    fed back into layoutlib through MinimalLayoutlibCallback.getParser when Bridge
- *    asks for an XmlResourceParser via ResourceHelper.getColorStateList,
- *    AnimatorInflater, DrawableInflater, or AnimationUtils.loadInterpolator
- *    respectively.
+ *  - colorStateLists / animators / drawables / interpolators / layouts: name → raw
+ *    XML body, fed back into layoutlib through MinimalLayoutlibCallback.getParser
+ *    when Bridge asks for an XmlResourceParser via ResourceHelper.getColorStateList,
+ *    AnimatorInflater, DrawableInflater, AnimationUtils.loadInterpolator, or
+ *    LayoutInflater.inflate respectively.
  */
 internal data class NsBucket(
     val byType: Map<ResourceType, Map<String, ResourceValue>>,
@@ -29,13 +30,14 @@ internal data class NsBucket(
     val animators: Map<String, String> = emptyMap(),
     val drawables: Map<String, String> = emptyMap(),
     val interpolators: Map<String, String> = emptyMap(),
+    val layouts: Map<String, String>,
 )
 {
     companion object
     {
         val EMPTY: NsBucket = NsBucket(
             emptyMap(), emptyMap(), emptyMap(),
-            emptyMap(), emptyMap(), emptyMap(), emptyMap(),
+            emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(),
         )
     }
 }

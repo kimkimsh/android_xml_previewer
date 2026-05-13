@@ -10,16 +10,17 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
 /**
- * W2D7-RENDERSESSION — MinimalLayoutlibCallback 의 resource id 양방향 맵 + 기본값 계약 검증.
- *
- * LayoutlibCallback 은 abstract class. Bridge 내부가 callback.getOrGenerateResourceId 로 int
- * 를 받고 나중에 callback.resolveResourceId 로 역참조. 양방향 stable mapping 이 필수.
+ * Verifies MinimalLayoutlibCallback's resource id bidirectional map plus the
+ * default contracts on the abstract LayoutlibCallback overrides. Bridge calls
+ * callback.getOrGenerateResourceId to mint an int, then callback.resolveResourceId
+ * to dereference it later — stable bidirectional mapping is the load-bearing
+ * invariant.
  */
 class MinimalLayoutlibCallbackTest {
 
     @Test
     fun `getOrGenerateResourceId returns stable id across calls`() {
-        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null })
+        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }, { null })
         val ref = ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.ID, "title")
         val first = cb.getOrGenerateResourceId(ref)
         val second = cb.getOrGenerateResourceId(ref)
@@ -28,7 +29,7 @@ class MinimalLayoutlibCallbackTest {
 
     @Test
     fun `different references get different ids`() {
-        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null })
+        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }, { null })
         val title = ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.ID, "title")
         val body = ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.ID, "body")
         assertNotEquals(cb.getOrGenerateResourceId(title), cb.getOrGenerateResourceId(body))
@@ -36,7 +37,7 @@ class MinimalLayoutlibCallbackTest {
 
     @Test
     fun `resolveResourceId returns registered reference`() {
-        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null })
+        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }, { null })
         val ref = ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.ID, "title")
         val id = cb.getOrGenerateResourceId(ref)
         assertEquals(ref, cb.resolveResourceId(id))
@@ -44,31 +45,31 @@ class MinimalLayoutlibCallbackTest {
 
     @Test
     fun `resolveResourceId returns null for unknown id`() {
-        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null })
+        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }, { null })
         assertNull(cb.resolveResourceId(0x7F999999))
     }
 
     @Test
     fun `getAdapterBinding is null`() {
-        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null })
+        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }, { null })
         assertNull(cb.getAdapterBinding(Any(), emptyMap()))
     }
 
     @Test
     fun `getActionBarCallback is non-null`() {
-        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null })
+        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }, { null })
         assertNotNull(cb.getActionBarCallback())
     }
 
     @Test
     fun `getParser returns null for any resource value`() {
-        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null })
+        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }, { null })
         assertNull(cb.getParser(null))
     }
 
     @Test
     fun `applicationId is stable axp token`() {
-        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null })
+        val cb = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }, { null })
         assertEquals("axp.render", cb.applicationId)
     }
 }

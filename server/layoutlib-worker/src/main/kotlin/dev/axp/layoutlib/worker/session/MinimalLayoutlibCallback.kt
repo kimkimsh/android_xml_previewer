@@ -8,28 +8,34 @@ import com.android.ide.common.rendering.api.ResourceNamespace
 import com.android.ide.common.rendering.api.ResourceReference
 import com.android.ide.common.rendering.api.ResourceValue
 import com.android.resources.ResourceType
+import dev.axp.layoutlib.worker.resources.AppLibraryResourceConstants
 import org.kxml2.io.KXmlParser
 import org.xmlpull.v1.XmlPullParser
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * W2D7-RENDERSESSION — LayoutlibCallback 의 최소 구현체.
+ * Minimal LayoutlibCallback implementation feeding bridge inflation.
  *
- * 구현 범위 (activity_minimal.xml 기준):
- *  - resource id 양방향 map (getOrGenerateResourceId ↔ resolveResourceId). 스레드-세이프.
- *  - loadView: 커스텀 뷰 요구 시 즉시 UnsupportedOperationException — 프레임워크 위젯은
- *    Bridge 내부에서 처리되므로 호출되지 않음이 불변식 (custom view = L3 W3+).
- *  - getAdapterBinding: ListView/Spinner 데이터 바인딩 없음 → null.
- *  - getActionBarCallback: 기본 ActionBarCallback() — setForceNoDecor 로 어차피 action bar 미표시.
- *  - XmlParserFactory 메서드: 본 W2D7 fixture 에서 호출될 일 없으나 interface 계약상 KXmlParser 반환.
+ * Implementation scope:
+ *  - Resource id bidirectional map (getOrGenerateResourceId ↔ resolveResourceId),
+ *    thread-safe.
+ *  - loadView: reflection-instantiates custom view classes from the sample-app
+ *    classloader. AppCompat auto-substitution remains enabled via findClass.
+ *  - getAdapterBinding: no ListView/Spinner data binding → null.
+ *  - getActionBarCallback: default ActionBarCallback() — setForceNoDecor masks
+ *    the action bar regardless.
+ *  - XmlParserFactory methods return KXmlParser by interface contract.
  *
- * W3D3-L3-CLASSLOADER (round 2 페어 리뷰 반영) — 변경 사항:
- *  - 생성자에 viewClassLoaderProvider lazy lambda 추가 (Q4 lazy build).
- *  - loadView: viewClassLoaderProvider 로부터 lazy 로 CL 받아 reflection-instantiate.
- *    InvocationTargetException 의 cause 를 unwrap (Q3, Codex 입장).
- *  - findClass: BridgeInflater.findCustomInflater 의 AppCompat 자동 치환 활성화 (F1).
- *  - hasAndroidXAppCompat: true (F1) — sample-app 의존 그래프 보유.
+ * Lazy classloader provider: the constructor takes a viewClassLoaderProvider
+ * lambda so the sample-app classloader is built on-demand. loadView uses the
+ * provider to reflection-instantiate the view, unwrapping
+ * InvocationTargetException so the bridge inflater sees the original cause.
+ *
+ * Raw-XML lookup wiring: COLOR / ANIMATOR / DRAWABLE / INTERPOLATOR / LAYOUT
+ * resource refs are routed through their respective lookup callbacks in
+ * getParser, so Bridge's ResourceHelper.getXmlBlockParser receives the bundle's
+ * stored raw body via SelectorXmlPullParser.
  */
 class MinimalLayoutlibCallback(
     private val viewClassLoaderProvider: () -> ClassLoader,
@@ -38,6 +44,7 @@ class MinimalLayoutlibCallback(
     private val animatorXmlLookup: (ResourceReference) -> String?,
     private val drawableXmlLookup: (ResourceReference) -> String?,
     private val interpolatorXmlLookup: (ResourceReference) -> String?,
+    private val layoutXmlLookup: (ResourceReference) -> String?,
 ) : LayoutlibCallback() {
 
     private val nextId = AtomicInteger(FIRST_ID)
@@ -55,7 +62,7 @@ class MinimalLayoutlibCallback(
         }
         catch (t: Throwable)
         {
-            throw IllegalStateException("R.jar 시드 중 실패: ${t.message}", t)
+            throw IllegalStateException("R.jar seeding failed: ${t.message}", t)
         }
     }
 
@@ -99,7 +106,8 @@ class MinimalLayoutlibCallback(
         }
         catch (ite: InvocationTargetException)
         {
-            // Q3: cause unwrap — layoutlib 의 BridgeInflater 가 InflateException 으로 wrap 함.
+            // Unwrap so layoutlib's BridgeInflater surfaces the original cause
+            // rather than an InflateException wrapper.
             throw ite.cause ?: ite
         }
     }
@@ -111,10 +119,13 @@ class MinimalLayoutlibCallback(
     override fun hasAndroidXAppCompat(): Boolean = true
 
     /**
-     * W3D4-β T12: Bridge ResourceHelper.getColorStateList → getXmlBlockParser 가 호출.
-     * RES_AUTO color state list (`res/color/<name>.xml`) 이면 raw selector XML 을
-     * StringReader 로 wrap 하여 ILayoutPullParser 반환. 그 외 (LAYOUT/MENU/DRAWABLE 등)
-     * 은 prior null 동작 보존 — round 3 양쪽 reviewer 가 회귀 없음을 확인.
+     * Bridge ResourceHelper.getXmlBlockParser routes through this method for
+     * non-framework values. Each raw-XML feed type has its own lookup that
+     * returns the bundle's stored body, which SelectorXmlPullParser wraps in a
+     * KXmlParser with namespace processing enabled. A null return drops Bridge
+     * back to ParserFactory.create(value), which calls createXmlParserForFile
+     * and produces a blank parser ("No Input specified") — that fallback is the
+     * canonical signal for an unwired ResourceType branch.
      */
     override fun getParser(layoutResource: ResourceValue?): ILayoutPullParser?
     {
@@ -150,6 +161,12 @@ class MinimalLayoutlibCallback(
                 val rawXml = interpolatorXmlLookup(ref) ?: return null
                 SelectorXmlPullParser.fromString(rawXml)
             }
+            ResourceType.LAYOUT ->
+            {
+                val ref = ResourceReference(ns, ResourceType.LAYOUT, name)
+                val rawXml = layoutXmlLookup(ref) ?: return null
+                SelectorXmlPullParser.fromString(rawXml)
+            }
             else -> null
         }
     }
@@ -160,7 +177,26 @@ class MinimalLayoutlibCallback(
 
     override fun createXmlParser(): XmlPullParser = buildKxml()
 
-    override fun createXmlParserForFile(fileName: String): XmlPullParser = buildKxml()
+    /**
+     * BridgeInflater.inflate(int, ViewGroup) — the 2-arg LayoutInflater
+     * overload — bypasses LayoutlibCallback.getParser and calls
+     * ParserFactory.create(value, true) directly, which delegates to this
+     * method with the ResourceValue.value string as fileName. The LAYOUT
+     * placeholder shape `axp/layout/<name>.xml` would arrive here
+     * unrecognized; the blank KXmlParser then produces "No Input specified".
+     * The defensive log surfaces the bypass case so future widgets that hit
+     * it have a grep-able diagnostic instead of a silent fallback.
+     */
+    override fun createXmlParserForFile(fileName: String): XmlPullParser
+    {
+        if (fileName.startsWith(AppLibraryResourceConstants.LAYOUT_PLACEHOLDER_PREFIX))
+        {
+            System.err.println(
+                "[MinimalLayoutlibCallback] createXmlParserForFile bypass detected for layout placeholder '$fileName' — BridgeInflater 2-arg overload skipped getParser",
+            )
+        }
+        return buildKxml()
+    }
 
     override fun createXmlParserForPsiFile(fileName: String): XmlPullParser = buildKxml()
 
@@ -172,12 +208,14 @@ class MinimalLayoutlibCallback(
 
     companion object {
         /**
-         * 생성 id 기저. 0x7F 패밀리 (android studio 관례) 의 하위.
-         * round 2 Q2 정정 — AAPT type-byte 와 disjoint. 0x7F0A_0000 → 0x7F80_0000.
+         * Generated id base — kept inside the 0x7F family per Android Studio
+         * convention but disjoint from the AAPT type-byte range; 0x7F80_0000
+         * leaves the per-type allocations 0x7F0A_xxxx through 0x7F7F_xxxx free
+         * for seeded R.jar entries.
          */
         private const val FIRST_ID = 0x7F80_0000
 
-        /** Bridge.mProjectKey lookup 등 내부 진단에 쓰일 수 있는 안정적 app id. */
+        /** Stable application id used by Bridge.mProjectKey lookups. */
         private const val APPLICATION_ID = "axp.render"
     }
 }

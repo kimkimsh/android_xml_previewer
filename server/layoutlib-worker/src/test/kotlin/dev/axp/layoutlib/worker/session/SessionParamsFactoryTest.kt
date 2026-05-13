@@ -13,10 +13,11 @@ import org.junit.jupiter.api.Test
 import java.io.StringReader
 
 /**
- * W2D7-RENDERSESSION — SessionParamsFactory 가 layoutlib 이 기대하는 SessionParams 를
- * 올바른 필드값으로 생성하는지 검증.
- *
- * CLAUDE.md F2 (페어 리뷰): empty RenderResources 금지 → default theme 필수.
+ * Verifies that SessionParamsFactory builds the SessionParams shape layoutlib
+ * expects: hardware config, rendering mode, layout parser identity, timeout,
+ * default theme, asset repository, project key + SDK levels, locale, decor /
+ * RTL flags, font scale, and UI mode. The default theme must be non-null
+ * because Bridge rejects an empty RenderResources without one.
  */
 class SessionParamsFactoryTest {
 
@@ -26,13 +27,10 @@ class SessionParamsFactoryTest {
     """.trimIndent()
 
     /**
-     * W3D1 3b-values: resources 파라미터 default 제거 → 테스트용 empty bundle + DEFAULT_FRAMEWORK_THEME.
-     * 실 값 로딩은 integration (tier3-values) 에서 검증.
-     *
-     * W3D4 T8: W3D1 FrameworkResourceBundle/FrameworkRenderResources 가 LayoutlibResourceBundle/
-     * LayoutlibRenderResources 로 흡수됨. 본 helper 는 SessionParamsFactory 의 결과 필드
-     * 검증용 stub 이므로 empty bundle (perNamespaceEntries=emptyMap) 으로 충분 — 실 값 로딩은
-     * integration test 가 cover.
+     * Stub RenderResources backed by an empty LayoutlibResourceBundle plus the
+     * default framework theme. Suitable for SessionParams field assertions
+     * that do not depend on real resource values; integration tests cover the
+     * real bundle path.
      */
     private fun emptyFrameworkRenderResources() =
         LayoutlibRenderResources(
@@ -43,7 +41,7 @@ class SessionParamsFactoryTest {
     private fun buildParams(): SessionParams =
         SessionParamsFactory.build(
             layoutParser = LayoutPullParserAdapter.fromReader(StringReader(sampleXml)),
-            callback = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }),
+            callback = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }, { null }),
             resources = emptyFrameworkRenderResources(),
         )
 
@@ -66,7 +64,7 @@ class SessionParamsFactoryTest {
         val parser = LayoutPullParserAdapter.fromReader(StringReader(sampleXml))
         val params = SessionParamsFactory.build(
             layoutParser = parser,
-            callback = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }),
+            callback = MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, { null }, { null }, { null }, { null }, { null }),
             resources = emptyFrameworkRenderResources(),
         )
         assertSame(parser, params.layoutDescription)
@@ -79,13 +77,13 @@ class SessionParamsFactoryTest {
 
     @Test
     fun `default theme is non-null with expected name`() {
-        // F2: empty RenderResources 금지 — default theme 필수 (= getDefaultTheme() non-null).
-        // W3D4 T8: LayoutlibRenderResources 가 multi-namespace. empty bundle 의 fallback theme 은
-        // RES_AUTO ns 로 생성됨 (LayoutlibRenderResources.emptyTheme). 본 unit test 는 stub
-        // bundle 이라 ANDROID/RES_AUTO 어느 쪽이든 의미 있는 assert 가 아니므로 name 만 검증.
-        // 실 framework theme namespace 는 integration test (real bundle 사용) 가 cover.
+        // Bridge rejects empty RenderResources without a default theme. The
+        // stub bundle's fallback theme lives in the RES_AUTO namespace; only
+        // the name is asserted here because an empty bundle makes the
+        // namespace assertion vacuous. Real framework theme namespace
+        // resolution is covered by the integration tests.
         val theme = buildParams().resources.defaultTheme
-        assertNotNull(theme, "F2: empty RenderResources 금지 — default theme 필수")
+        assertNotNull(theme, "default theme required (Bridge rejects empty RenderResources without one)")
         assertEquals(SessionConstants.DEFAULT_FRAMEWORK_THEME, theme.name)
     }
 
@@ -94,7 +92,7 @@ class SessionParamsFactoryTest {
         val params = buildParams()
         val assets = params.assets
         assertNotNull(assets)
-        assertTrue(!assets.isSupported, "NoopAssetRepository 는 비지원 모드로 Bridge 에 신호")
+        assertTrue(!assets.isSupported, "NoopAssetRepository signals non-supported mode to Bridge")
     }
 
     @Test
@@ -112,18 +110,19 @@ class SessionParamsFactoryTest {
 
     @Test
     fun `forceNoDecor flag applied`() {
-        // 페어 리뷰 (Claude): setForceNoDecor 가 적용되지 않으면 status bar/action bar 가
-        // 포함되어 targeted-rect pixel 체크가 false-positive 될 수 있음.
+        // Without setForceNoDecor the rendered output includes the status bar
+        // and action bar, which would false-positive a targeted-rect pixel
+        // check downstream.
         val field = java.lang.Class.forName("com.android.ide.common.rendering.api.RenderParams")
             .getDeclaredField("mForceNoDecor").apply { isAccessible = true }
-        assertTrue(field.getBoolean(buildParams()), "setForceNoDecor() 가 적용되어야 함")
+        assertTrue(field.getBoolean(buildParams()), "setForceNoDecor() must be applied")
     }
 
     @Test
     fun `rtl support enabled`() {
         val field = java.lang.Class.forName("com.android.ide.common.rendering.api.RenderParams")
             .getDeclaredField("mSupportsRtl").apply { isAccessible = true }
-        assertTrue(field.getBoolean(buildParams()), "setRtlSupport(true) 가 적용되어야 함")
+        assertTrue(field.getBoolean(buildParams()), "setRtlSupport(true) must be applied")
     }
 
     @Test

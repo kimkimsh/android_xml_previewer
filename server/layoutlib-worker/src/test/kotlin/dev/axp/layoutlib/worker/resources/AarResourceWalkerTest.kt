@@ -110,6 +110,14 @@ class AarResourceWalkerTest
             val log = errOut.toString()
             assertTrue(log.contains("[AarResourceWalker]"))
             assertTrue(log.contains("ms"), "wall-clock ms in log")
+            // Each per-resource-type aggregate must appear in the diagnostic
+            // line; otherwise a future feed addition could regress without
+            // failing the smoke test.
+            assertTrue(log.contains("color-state-lists"), "color-state-lists token")
+            assertTrue(log.contains("animator-xmls"), "animator-xmls token")
+            assertTrue(log.contains("drawable-xmls"), "drawable-xmls token")
+            assertTrue(log.contains("interpolator-xmls"), "interpolator-xmls token")
+            assertTrue(log.contains("layout-xmls"), "layout-xmls token")
         }
         finally
         {

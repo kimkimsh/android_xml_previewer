@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 class MinimalLayoutlibCallbackInitializerTest {
 
     @Test
-    fun `initializer 가 등록한 ref 와 id 가 양방향 lookup 가능`() {
+    fun `initializer-registered ref and id are bidirectionally lookupable`() {
         val seededRef = ResourceReference(
             ResourceNamespace.fromPackageName("com.example"),
             ResourceType.ATTR,
@@ -24,13 +24,14 @@ class MinimalLayoutlibCallbackInitializerTest {
             { null },
             { null },
             { null },
+            { null },
         )
         assertEquals(seededRef, cb.resolveResourceId(0x7F010001))
         assertEquals(0x7F010001, cb.getOrGenerateResourceId(seededRef))
     }
 
     @Test
-    fun `getOrGenerateResourceId 가 seed 된 high id 위로 증가`() {
+    fun `getOrGenerateResourceId advances above the seeded high id`() {
         val cb = MinimalLayoutlibCallback(
             { ClassLoader.getSystemClassLoader() },
             { register ->
@@ -43,6 +44,7 @@ class MinimalLayoutlibCallbackInitializerTest {
             { null },
             { null },
             { null },
+            { null },
         )
         val newRef = ResourceReference(ResourceNamespace.fromPackageName("p"), ResourceType.ID, "fresh")
         val newId = cb.getOrGenerateResourceId(newRef)
@@ -50,7 +52,7 @@ class MinimalLayoutlibCallbackInitializerTest {
     }
 
     @Test
-    fun `initializer 가 throw 하면 IllegalStateException 으로 wrap`() {
+    fun `initializer throw is wrapped as IllegalStateException`() {
         val ex = assertThrows<IllegalStateException> {
             MinimalLayoutlibCallback(
                 { ClassLoader.getSystemClassLoader() },
@@ -59,8 +61,9 @@ class MinimalLayoutlibCallbackInitializerTest {
                 { null },
                 { null },
                 { null },
+                { null },
             )
         }
-        assertTrue(ex.message!!.contains("R.jar"), "메시지에 R.jar 포함: ${ex.message}")
+        assertTrue(ex.message!!.contains("R.jar"), "message must mention R.jar: ${ex.message}")
     }
 }

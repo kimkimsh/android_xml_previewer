@@ -4,12 +4,11 @@ import com.android.ide.common.rendering.api.ResourceNamespace
 import com.android.resources.ResourceType
 
 /**
- * W3D4 §3.1 #2: namespace + sourcePackage tagged parsed entry.
- * sourcePackage 는 dedupe diagnostic 출력용 (어느 AAR 에서 왔는지). production resolution 에는 미사용.
- *
- * W3D1 ParsedEntry 와 별개 sealed class — namespace/sourcePackage 가 추가된 W3D4 전용 형태.
- * (W3D1 ParsedEntry: sample-app/framework single-namespace 가정. W3D4 ParsedNsEntry: multi-AAR
- * + sample-app + framework 가 동일 chain 위에서 공존.)
+ * Namespace + sourcePackage tagged parsed entry. sourcePackage is for dedupe
+ * diagnostic output only (which AAR the entry came from); production resolution
+ * does not consult it. This sealed class is distinct from the older single-
+ * namespace ParsedEntry — it carries the namespace explicitly so multi-AAR +
+ * sample-app + framework can coexist on the same chain.
  */
 internal sealed class ParsedNsEntry
 {
@@ -17,8 +16,9 @@ internal sealed class ParsedNsEntry
     abstract val sourcePackage: String?  // null = framework / sample-app
 
     /**
-     * `<dimen name="X">4dp</dimen>`, `<color name="X">#fff</color>`, `<integer>`, `<bool>`,
-     * `<string>`, `<item type="X" name="Y">Z</item>` 단일-값 엔트리 (namespace tagged).
+     * Single-value entry — `<dimen name="X">4dp</dimen>`, `<color name="X">#fff</color>`,
+     * `<integer>`, `<bool>`, `<string>`, `<item type="X" name="Y">Z</item>`.
+     * Namespace tagged.
      */
     data class SimpleValue(
         val type: ResourceType,
@@ -29,16 +29,18 @@ internal sealed class ParsedNsEntry
     ) : ParsedNsEntry()
 
     /**
-     * `<attr name="X" format="Y" />` 선언 (namespace tagged).
-     * W3D1 AttrDef 와 동일하게 top-level / declare-styleable 자식 모두 수집.
+     * `<attr name="X" format="Y" />` declaration (namespace tagged). Collected from
+     * both top-level and `<declare-styleable>` children.
      *
-     * W3D4-γ T14: `<enum>/<flag>` 자식 값 테이블 (name → integer) 도 함께 보존.
-     * BridgeTypedArray.resolveEnumAttribute 가 RES_AUTO path 에서 AttrResourceValueImpl
-     * .getAttributeValues() 로 이 테이블을 조회. framework path 는 별도 Bridge.sEnumValueMap
-     * 경로 (T15 가 처리, 동일 데이터 소스).
+     * `<enum>` / `<flag>` child value tables (name → integer) are also preserved.
+     * BridgeTypedArray.resolveEnumAttribute reads them from the RES_AUTO path via
+     * AttrResourceValueImpl.getAttributeValues(); the framework path goes through
+     * the separate Bridge.sEnumValueMap (same data source).
      *
-     * enumValues / flagValues 둘 다 Map<String, Int> (insertion order 보존). 한 attr 가
-     * enum + flag 동시 보유는 framework attrs.xml census 0 건 — 한 쪽이 비면 명시 emptyMap().
+     * enumValues and flagValues are both Map<String, Int> with insertion order
+     * preserved. An attr holding both enum and flag children was 0 cases in the
+     * framework attrs.xml census — when one side is empty the field is explicitly
+     * emptyMap().
      */
     data class AttrDef(
         val name: String,
@@ -49,9 +51,9 @@ internal sealed class ParsedNsEntry
     ) : ParsedNsEntry()
 
     /**
-     * `<style name="X" parent="Y"> <item name="A">B</item> ... </style>` (namespace tagged).
-     *
-     * parent 는 파서가 가공하지 않은 원본 문자열 (null 또는 empty 가능). items 는 선언 순서 유지.
+     * `<style name="X" parent="Y"> <item name="A">B</item> ... </style>` (namespace
+     * tagged). parent is the raw unprocessed string (null or empty allowed). items
+     * preserve declaration order.
      */
     data class StyleDef(
         val name: String,
@@ -61,14 +63,14 @@ internal sealed class ParsedNsEntry
         override val sourcePackage: String? = null,
     ) : ParsedNsEntry()
     {
-        /** `<style>` 내부의 단일 `<item name="...">value</item>`. */
+        /** A single `<item name="...">value</item>` inside a `<style>`. */
         data class StyleItem(val name: String, val value: String)
     }
 
     /**
-     * W3D4-β T12: `res/color/<name>.xml` 의 색 state list (`<selector>` root).
-     * rawXml 는 selector body 전체. MinimalLayoutlibCallback.getParser 가 StringReader
-     * 로 wrap 하여 Bridge ResourceHelper.getColorStateList 에 feed.
+     * `res/color/<name>.xml` color state list (`<selector>` root). rawXml is the
+     * full selector body. MinimalLayoutlibCallback.getParser wraps it in a
+     * StringReader and feeds it to Bridge ResourceHelper.getColorStateList.
      */
     data class ColorStateList(
         val name: String,
@@ -78,9 +80,10 @@ internal sealed class ParsedNsEntry
     ) : ParsedNsEntry()
 
     /**
-     * `res/animator/<name>.xml` raw body — Material AAR 의 stateListAnimator and motion-spec
-     * XML files. callback.getParser feeds the body through SelectorXmlPullParser the same
-     * way ColorStateList does; AnimatorInflater consumes via XmlResourceParser.
+     * `res/animator/<name>.xml` raw body — Material AAR stateListAnimator and
+     * motion-spec XML files. callback.getParser feeds the body through
+     * SelectorXmlPullParser the same way ColorStateList does;
+     * AnimatorInflater consumes the result via XmlResourceParser.
      */
     data class AnimatorXml(
         val name: String,
@@ -119,5 +122,22 @@ internal sealed class ParsedNsEntry
         val rawXml: String,
         override val namespace: ResourceNamespace,
         override val sourcePackage: String? = null,
+    ) : ParsedNsEntry()
+
+    /**
+     * `res/layout/<name>.xml` raw body — AppCompat / core / Material AAR-internal
+     * layout files (e.g. `design_text_input_start_icon` for TextInputLayout's
+     * leading icon container). LayoutInflater.inflate(int, ViewGroup, boolean)
+     * routes via Resources_Delegate.getLayout → ResourceHelper.getXmlBlockParser
+     * → callback.getParser at the same callback path as ColorStateList /
+     * AnimatorXml / DrawableXml / InterpolatorXml. Default qualifier directory
+     * only — layout-v21/, layout-night/, etc. are out of scope until W4+
+     * qualifier support.
+     */
+    data class LayoutXml(
+        val name: String,
+        val rawXml: String,
+        override val namespace: ResourceNamespace,
+        override val sourcePackage: String?,
     ) : ParsedNsEntry()
 }

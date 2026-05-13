@@ -128,17 +128,15 @@ class LayoutlibRendererIntegrationTest
      *  - cursorColor / cursorErrorColor (API 31+) are resolved through layoutlib
      *    14.0.11 (API 34) paths not exercised by activity_basic or activity_chip.
      *
-     * Currently @Disabled pending the AAR res/layout feed. The probe captured by
-     * the interpolator XML feed work showed TextInputLayout requesting
-     * design_text_input_start_icon (ResourceType.LAYOUT, value
-     * design_text_input_start_icon) through LayoutlibCallback.getParser. The
-     * MinimalLayoutlibCallback handles COLOR / ANIMATOR / DRAWABLE / INTERPOLATOR
-     * but not LAYOUT, so Bridge falls back to ParserFactory.create(value) which
-     * returns a parser without setInput, surfacing as XmlPullParserException with
-     * "No Input specified". Closing this gate is a separate scope decision — the
-     * Codex Q4 trigger criterion lists "AAR res/layout feed" as plan v6 + Round 7
-     * Codex+Claude planning pair-review territory rather than W4-A-sibling
-     * single-shot work.
+     * Currently @Disabled. The active inflate failure is the AppCompat StateList
+     * drawable `@drawable/abc_item_background_holo_light` (resolved from
+     * `?attr/actionBarItemBackground`): its `<item>` children reference 9-patch
+     * PNG drawables in qualifier directories (`res/drawable-mdpi-v4/`,
+     * `res/drawable-xxhdpi-v4/`) that the AAR walker does not enumerate.
+     * StateListDrawable.inflateChildElements throws "<item> tag requires a
+     * 'drawable' attribute or child tag defining a drawable" because the
+     * chained PNG resolves to null. The IT remains disabled until the PNG /
+     * qualifier drawable feed lands.
      */
     @Test
     @Disabled

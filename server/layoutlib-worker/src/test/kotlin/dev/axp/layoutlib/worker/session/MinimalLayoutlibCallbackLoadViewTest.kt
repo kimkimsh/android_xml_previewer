@@ -10,8 +10,10 @@ import java.lang.reflect.InvocationTargetException
 class MinimalLayoutlibCallbackLoadViewTest {
 
     /**
-     * 호출 추적용 ClassLoader — 어떤 클래스가 어느 provider 로부터 요청됐는지 검증.
-     * StringBuilder 같은 bootstrap 클래스를 직접 쓰면 cls.classLoader == null 이라 비교가 깨짐.
+     * Tracking ClassLoader for verifying which class loads were dispatched
+     * through which provider. Bootstrap-loaded classes such as StringBuilder
+     * report a null classLoader, so a tracking subclass intercepts loadClass
+     * to record requests without breaking comparison.
      */
     private class TrackingClassLoader(parent: ClassLoader) : ClassLoader(parent) {
         val requested = mutableListOf<String>()
@@ -22,20 +24,20 @@ class MinimalLayoutlibCallbackLoadViewTest {
     }
 
     private fun newCallback(cl: ClassLoader): MinimalLayoutlibCallback =
-        MinimalLayoutlibCallback({ cl }, { /* no-op */ }, { null }, { null }, { null }, { null })
+        MinimalLayoutlibCallback({ cl }, { /* no-op */ }, { null }, { null }, { null }, { null }, { null })
 
     @Test
-    fun `loadView — provider CL 로 위임 + 정상 instantiate`() {
+    fun `loadView delegates to provider classloader and instantiates`() {
         val cl = TrackingClassLoader(ClassLoader.getSystemClassLoader())
         val cb = newCallback(cl)
         val v = cb.loadView("java.lang.StringBuilder", arrayOf(CharSequence::class.java), arrayOf<Any>("hi"))
         assertNotNull(v)
         assertEquals("hi", v.toString())
-        assertTrue("java.lang.StringBuilder" in cl.requested, "provider CL 호출 기록: ${cl.requested}")
+        assertTrue("java.lang.StringBuilder" in cl.requested, "provider CL load record: ${cl.requested}")
     }
 
     @Test
-    fun `loadView — 미지 클래스 ClassNotFoundException pass-through`() {
+    fun `loadView surfaces ClassNotFoundException for unknown class`() {
         val cl = TrackingClassLoader(ClassLoader.getSystemClassLoader())
         val cb = newCallback(cl)
         assertThrows<ClassNotFoundException> {
@@ -44,7 +46,7 @@ class MinimalLayoutlibCallbackLoadViewTest {
     }
 
     @Test
-    fun `loadView — InvocationTargetException 의 cause 가 unwrap 되어 throw`() {
+    fun `loadView unwraps InvocationTargetException to its cause`() {
         val cl = TrackingClassLoader(ClassLoader.getSystemClassLoader())
         val cb = newCallback(cl)
         val ex = assertThrows<IllegalArgumentException> {
@@ -54,7 +56,7 @@ class MinimalLayoutlibCallbackLoadViewTest {
     }
 
     @Test
-    fun `findClass — provider CL 로 위임`() {
+    fun `findClass delegates to provider classloader`() {
         val cl = TrackingClassLoader(ClassLoader.getSystemClassLoader())
         val cb = newCallback(cl)
         val cls = cb.findClass("java.lang.StringBuilder")
@@ -63,7 +65,7 @@ class MinimalLayoutlibCallbackLoadViewTest {
     }
 
     @Test
-    fun `hasAndroidXAppCompat — true`() {
+    fun `hasAndroidXAppCompat is true`() {
         val cb = newCallback(ClassLoader.getSystemClassLoader())
         assertTrue(cb.hasAndroidXAppCompat())
     }

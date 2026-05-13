@@ -122,6 +122,40 @@ internal object AppLibraryResourceConstants
     fun interpolatorPlaceholderValue(name: String): String =
         INTERPOLATOR_PLACEHOLDER_PREFIX + name + INTERPOLATOR_PLACEHOLDER_SUFFIX
 
+    /**
+     * AAR ZIP entry prefix — layout XML directory. AppCompat / core / Material AARs
+     * ship internal `res/layout/<name>.xml` files (TextInputLayout's
+     * `design_text_input_start_icon`, NavigationView's `design_navigation_item`,
+     * etc.) that widget code inflates via
+     * `LayoutInflater.from(ctx).inflate(R.layout.<name>, parent, attachToRoot)`.
+     * Bridge consumes these via `Resources_Delegate.getLayout(Resources, int)` →
+     * `ResourceHelper.getXmlBlockParser(BridgeContext, ResourceValue)` →
+     * `LayoutlibCallback.getParser(value)`.
+     */
+    const val AAR_LAYOUT_DIR_PREFIX = "res/layout/"
+
+    /**
+     * Layout-XML ResourceValue placeholder generator. The
+     * `Resources_Delegate.getLayout(Resources, int)` path (offset 829-872 of
+     * layoutlib-14.0.11.jar) routes through `ResourceHelper.getXmlBlockParser`
+     * at the same constant pool index `#476` as `getXml` and `getAnimation`.
+     * There is no `.xml` suffix gate (unlike `getDrawable`) and no
+     * `sLayoutCache` (unlike `getDrawable`'s `sDrawableCache` LruCache), so
+     * the placeholder need not be `.xml`-suffixed for the callback routing.
+     * The path-style shape is preserved as a defensive marker for the
+     * `BridgeInflater.inflate(int, ViewGroup)` 2-arg bypass path (offset
+     * 78-83) which calls `ParserFactory.create(value, true)` →
+     * `XmlParserFactory.createXmlParserForFile(value)` directly; the
+     * `axp/layout/` prefix lets `createXmlParserForFile` detect bypass
+     * attempts via prefix match. Per-name uniqueness keeps any downstream
+     * value-keyed cache addressed correctly.
+     */
+    const val LAYOUT_PLACEHOLDER_PREFIX = "axp/layout/"
+    const val LAYOUT_PLACEHOLDER_SUFFIX = ".xml"
+
+    fun layoutPlaceholderValue(name: String): String =
+        LAYOUT_PLACEHOLDER_PREFIX + name + LAYOUT_PLACEHOLDER_SUFFIX
+
     /** AAR ZIP entry — AndroidManifest.xml (used to extract the package attribute). */
     const val AAR_ANDROID_MANIFEST_PATH = "AndroidManifest.xml"
 

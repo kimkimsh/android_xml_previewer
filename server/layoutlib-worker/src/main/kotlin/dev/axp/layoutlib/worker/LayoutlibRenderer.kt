@@ -35,16 +35,16 @@ import javax.imageio.ImageIO
 import kotlin.io.path.absolutePathString
 
 /**
- * W2D6-FATJAR (08 §7.7 blocker #3) → W2D7-RENDERSESSION (08 §7.7.1 item 3b).
+ * Layoutlib-backed PngRenderer. `renderViaLayoutlib` drives the real
+ * `Bridge.createSession(SessionParams)` → `RenderSession.render(timeout)` →
+ * `session.image: BufferedImage` path. `Bridge.init` runs once per JVM;
+ * RenderSession is created and disposed per render.
  *
- * W2D7 에서 `renderViaLayoutlib` 는 실제 `Bridge.createSession(SessionParams)` →
- * `RenderSession.render(timeout)` → `session.image: BufferedImage` 경로로 교체되었다.
- * Bridge.init 은 한 번만 수행 (JVM 생애). RenderSession 은 per-render 생성-dispose.
- *
- * 경계:
- *  - 커스텀 뷰 (ConstraintLayout, MaterialButton 등) 는 `MinimalLayoutlibCallback.loadView`
- *    가 UnsupportedOperationException 으로 거부 — activity_basic.xml 은 W3+ L3 타겟.
- *  - fixture XML 을 찾지 못하면 즉시 throw (버그). RenderSession 내부 실패는 fallback 으로 위임.
+ * Boundaries:
+ *  - Custom views (ConstraintLayout, MaterialButton, ...) inflate via
+ *    `MinimalLayoutlibCallback.loadView` against the sample-app classloader.
+ *  - A missing fixture layout throws immediately (treated as a bug);
+ *    RenderSession-internal failures delegate to the fallback PngRenderer.
  */
 class LayoutlibRenderer(
     private val distDir: Path,
@@ -63,23 +63,22 @@ class LayoutlibRenderer(
     @Volatile private var sampleAppClassLoader: SampleAppClassLoader? = null
 
     /**
-     * W2D7 3b-arch 진단 hook — 마지막 `createSession` 호출의 Result. createSession 이 inflate 를
-     * 시도한 뒤의 즉시 상태를 담는다 (render() 가 이후 ERROR_NOT_INFLATED 를 추가로 반환해도
-     * 덮어쓰지 않음 — 원인은 createSession 에 있음).
-     *
-     * 현재 3b-values (framework resource VALUE 파싱) 이 W3 carry 로 split 되어 있어 실 inflate 는
-     * `ERROR_INFLATION (config_scrollbarSize not found)` 에서 중단된다.
+     * Diagnostic hook holding the Result returned by the most recent
+     * `createSession` call. Captures the immediate post-inflate state so a
+     * subsequent ERROR_NOT_INFLATED from `render()` does not overwrite the
+     * upstream inflate failure cause.
      */
     @Volatile var lastCreateSessionResult: Result? = null
         private set
 
-    /** `render()` 호출의 Result (createSession 이 성공했을 때만 의미 있음). */
+    /** Result of the most recent `render()` call (meaningful only when createSession succeeded). */
     @Volatile var lastRenderResult: Result? = null
         private set
 
     /**
-     * 진단용 편의: createSession 이 실패했다면 그 result, 아니면 render 의 result.
-     * 3b-arch tests 는 이 값을 assert.
+     * Convenience accessor: when createSession itself failed, surfaces that
+     * result; otherwise surfaces the render result. Integration tests assert
+     * on this to distinguish inflate failures from render failures.
      */
     val lastSessionResult: Result?
         get() = lastCreateSessionResult?.takeIf { !it.isSuccess } ?: lastRenderResult
@@ -89,9 +88,11 @@ class LayoutlibRenderer(
     }
 
     /**
-     * W3D4-γ T15: initBridge + renderViaLayoutlib 양쪽이 동일 LoaderArgs 로 bundle cache hit
-     * 보장. JVM-wide ConcurrentHashMap key = 3-tuple identity. ctor 인자 (distDir, sample-app,
-     * runtime-classpath) 가 instance 동안 immutable 이므로 매 호출마다 build 해도 동일 hash.
+     * Both initBridge and renderViaLayoutlib share the same LoaderArgs so the
+     * JVM-wide bundle cache hits identically. The cache key is the 3-tuple
+     * (distDataDir, sampleAppRoot, runtimeClasspathTxt); the constructor
+     * arguments are immutable across this instance's lifetime, so rebuilding
+     * the Args object per call produces the same hash.
      */
     private fun loaderArgs(): LayoutlibResourceValueLoader.Args =
         LayoutlibResourceValueLoader.Args(
@@ -106,7 +107,7 @@ class LayoutlibRenderer(
         }
         return renderViaLayoutlib(layoutName)
             ?: (fallback?.renderPng(layoutName)
-                ?: error("LayoutlibRenderer 실패 + fallback 없음: $layoutName"))
+                ?: error("LayoutlibRenderer failed and no fallback configured: $layoutName"))
     }
 
     @Synchronized
@@ -121,7 +122,8 @@ class LayoutlibRenderer(
             try {
                 System.load(nativeLib.absolutePathString())
             } catch (_: Throwable) {
-                // native lib 로딩 실패는 렌더 실패로 처리하지 않음 — init 시도는 계속.
+                // Native lib load failures do not abort init — Bridge.init still
+                // succeeds without the optional native components.
             }
         }
 
@@ -129,12 +131,12 @@ class LayoutlibRenderer(
         val fontDir = bootstrap.fontsDir().toFile()
         val nativeLibPath = bootstrap.nativeLibDir().absolutePathString()
         val icuPath = bootstrap.findIcuDataFile()?.absolutePathString()
-            ?: error("ICU data 파일 누락 (data/icu/icudt*.dat)")
+            ?: error("ICU data file missing (data/icu/icudt*.dat)")
         val keyboardPaths = bootstrap.listKeyboardPaths().toTypedArray()
-        // W3D4-γ T15: framework attrs.xml 의 enum/flag 값 테이블을 Bridge.sEnumValueMap 에 주입.
-        // BridgeTypedArray.resolveEnumAttribute 가 ANDROID namespace path 에서 정적 sEnumValueMap
-        // 만 조회. bundle 은 어차피 renderViaLayoutlib 에서 동일 args 로 cache hit — 추가 비용 없음.
-        // 측정 (round 4): cold-start framework=39ms app=1ms aar=36ms build=13ms total=89ms.
+        // Inject the framework attrs.xml enum/flag tables into Bridge.sEnumValueMap.
+        // BridgeTypedArray.resolveEnumAttribute consults the static sEnumValueMap on
+        // the ANDROID namespace path; renderViaLayoutlib hits the same JVM-wide
+        // bundle cache by Args identity so this is a single parse.
         val bundle = LayoutlibResourceValueLoader.loadOrGet(loaderArgs())
         val enumValueMap = bundle.frameworkEnumValueMap()
 
@@ -165,54 +167,59 @@ class LayoutlibRenderer(
     }
 
     /**
-     * W2D7: 실 Bridge.createSession → RenderSession.render → BufferedImage → PNG 경로.
+     * Real Bridge.createSession → RenderSession.render → BufferedImage → PNG
+     * pipeline.
      *
-     * 흐름:
-     *  1. fixture 경로에서 XML 로드 → LayoutPullParserAdapter.
+     * Flow:
+     *  1. Load fixture XML → LayoutPullParserAdapter.
      *  2. SessionParamsFactory.build(parser) → SessionParams.
-     *  3. bridge.createSession(params) 를 reflection 으로 호출 (bridge 는 isolated CL 에서 로드된
-     *     인스턴스; SessionParams 는 system CL 의 동일 클래스 타입 — parent-first delegation 이
-     *     동일 Class identity 를 보장).
-     *  4. session.render(timeout) → result.isSuccess 체크.
+     *  3. Reflection-invoke bridge.createSession(params). Bridge is loaded from
+     *     the isolated classloader; SessionParams is the system-classloader
+     *     type — parent-first delegation guarantees Class identity.
+     *  4. session.render(timeout) and check result.isSuccess.
      *  5. session.image → ImageIO.write PNG → bytes.
-     *  6. 무조건 session.dispose().
+     *  6. session.dispose() unconditionally in finally.
      *
-     * 실패 시 (result non-success, exception, fixture 없음 이외) → null 반환 → fallback.
+     * On any failure other than a missing fixture, returns null so the caller
+     * can fall back to the configured PngRenderer.
      */
     private fun renderViaLayoutlib(layoutName: String): ByteArray? {
         val layoutPath = fixtureRoot.resolve(layoutName)
         require(layoutPath.toFile().isFile) {
-            "fixture 레이아웃을 찾을 수 없음: $layoutPath"
+            "fixture layout not found: $layoutPath"
         }
 
         val parser = LayoutPullParserAdapter.fromFile(layoutPath)
-        // W3D4 §3.1 (T8): W3D1 framework-only loader 가 3-입력 통합 loader 로 흡수됨.
-        // framework + sample-app + 41 AAR 의 values XML 을 ANDROID/RES_AUTO 2-bucket 으로 build.
-        // JVM-wide cache (Args 3-tuple key) — 첫 호출만 파싱 비용 발생.
+        // Build the unified resource bundle covering framework + sample-app + AAR
+        // values XML across the ANDROID and RES_AUTO buckets. Cache is keyed by
+        // the 3-tuple Args identity, so only the first call pays parsing cost.
         val bundle = LayoutlibResourceValueLoader.loadOrGet(loaderArgs())
         val resources = LayoutlibRenderResources(bundle, themeName)
         val params: SessionParams = SessionParamsFactory.build(
             layoutParser = parser,
-            // W3D4-β T12: bundle.getColorStateListXml 을 callback 에 wiring →
-            // Bridge ResourceHelper.getColorStateList 가 callback.getParser 로 input feed.
+            // Wire each raw-XML feed lookup into the callback so Bridge's
+            // ResourceHelper.getXmlBlockParser path returns a parser fed with
+            // the bundle's stored body for COLOR / ANIMATOR / DRAWABLE /
+            // INTERPOLATOR / LAYOUT references.
             callback = MinimalLayoutlibCallback(
                 { ensureSampleAppClassLoader() },
                 ::seedRJarSymbols,
-                { ref -> bundle.getColorStateListXml(ref) },
-                { ref -> bundle.getAnimatorXml(ref) },
-                { ref -> bundle.getDrawableXml(ref) },
-                { ref -> bundle.getInterpolatorXml(ref) },
+                bundle::getColorStateListXml,
+                bundle::getAnimatorXml,
+                bundle::getDrawableXml,
+                bundle::getInterpolatorXml,
+                bundle::getLayoutXml,
             ),
             resources = resources,
         )
 
         val bridge = bridgeInstance ?: return null
 
-        // createSession 은 bridge 클래스에서 선언. parent-first 덕분에 인자/반환 타입이 system CL 의
-        // SessionParams / RenderSession 과 동일.
-        // 페어 리뷰 (Codex + Claude convergent): parameterCount==1 만 매칭하면 향후 layoutlib 이
-        // 다른 1-arg createSession 오버로드를 추가할 때 잘못된 메서드를 선택할 수 있으므로, 인자
-        // 타입을 SessionParams 로 명시 검증.
+        // createSession is declared on the bridge class. Parent-first delegation
+        // makes the argument and return types share Class identity with the
+        // system-classloader SessionParams / RenderSession. Matching on
+        // parameterCount alone would risk picking up a future 1-arg overload,
+        // so the argument type is verified explicitly as SessionParams.
         val createSession = bridge.javaClass.methods.firstOrNull {
             it.name == BRIDGE_CREATE_SESSION &&
                 it.parameterCount == BRIDGE_CREATE_SESSION_PARAM_COUNT &&
@@ -222,13 +229,15 @@ class LayoutlibRenderer(
         val session = try {
             createSession.invoke(bridge, params) as? RenderSession ?: return null
         } catch (t: Throwable) {
-            // Bridge 내부 예외 — fallback 으로 위임.
+            // Bridge-internal exception — defer to the fallback renderer.
             t.printStackTrace(System.err)
             return null
         }
 
-        // createSession 이 inflate 까지 시도. 실패 시 session.result 에 상태가 담긴다.
-        // 3b-arch hook: tests 가 architecture-positive evidence 로 사용.
+        // createSession attempts inflate before returning. On failure the
+        // session.result carries the cause; the diagnostic hook captures it so
+        // integration tests can assert on the upstream status independently of
+        // any later render() failure.
         val initialResult = session.result
         lastCreateSessionResult = initialResult
         initialResult?.let {
@@ -263,22 +272,24 @@ class LayoutlibRenderer(
     }
 
     /**
-     * W3D3 (round-2 페어 B1): sample-app 의 dex/aar 클래스로더는 lazy 하게 build.
-     * Bridge.init 이 끝난 후 (= isolated CL 가 준비된 후) MinimalLayoutlibCallback 의
-     * loadView 가 처음 호출되는 시점에 한 번 빌드된다.
+     * Lazy build of the sample-app dex/aar classloader. The isolated Bridge
+     * classloader must exist first (Bridge.init seeds it); this method is
+     * called the first time MinimalLayoutlibCallback.loadView resolves a view.
      */
     @Synchronized
     private fun ensureSampleAppClassLoader(): ClassLoader
     {
         sampleAppClassLoader?.let { return it.classLoader }
-        val isolated = classLoader ?: error("Bridge 가 init 안 됨 (initBridge 가 먼저 실행되어야 함)")
+        val isolated = classLoader ?: error("Bridge not initialized (initBridge must run first)")
         val built = SampleAppClassLoader.build(sampleAppModuleRoot, isolated)
         sampleAppClassLoader = built
         return built.classLoader
     }
 
     /**
-     * α: callback init 에서 호출. R.jar 의 모든 R$<type> 클래스를 enumerate 하여 등록.
+     * Invoked by MinimalLayoutlibCallback's initializer. Enumerates every
+     * `R$<type>` inner class in the sample-app R.jar and registers each int
+     * symbol against its ResourceReference via the supplied callback.
      */
     private fun seedRJarSymbols(register: (ResourceReference, Int) -> Unit)
     {
@@ -302,7 +313,7 @@ class LayoutlibRenderer(
     companion object {
         private const val BRIDGE_CREATE_SESSION = "createSession"
 
-        /** `createSession(SessionParams)` 의 parameter count — strict 리플렉션 매칭용. */
+        /** Strict reflection match — `createSession(SessionParams)` parameter count. */
         private const val BRIDGE_CREATE_SESSION_PARAM_COUNT = 1
     }
 }
