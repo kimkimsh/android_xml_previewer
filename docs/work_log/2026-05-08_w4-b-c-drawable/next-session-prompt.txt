@@ -1,0 +1,209 @@
+W4 next candidate scope decision — W4-B 트리오 (drawable feed → trim → macro
+→ drawable placeholder) 완전 종결 후 다음 candidate 진입.
+
+직전 commit 3 개 (W4-B-A close: NamespaceAwareValueParser style item body
+trim — chip stateListAnimator callback bypass close; W4-B-B close:
+NamespaceAwareValueParser `<macro>` element 파싱 — chip TextAppearance NPE
+close; W4-B-C close: per-name `.xml`-suffix drawable placeholder — chip
+drawable abc_vector_test lookup callback bypass close). 본 세션 첫 작업
+= **W4 next candidate scope decision** (widget extension / namespace-aware
+mode / hold 중 user priority 결정).
+
+현 시점 상태 (commit (가장 최근) `c4475c3` `feat(w4-b-c): drawable
+placeholder per-name xml suffix — chip drawable resolution now wires
+through callback`):
+- 258 unit PASS / 0 fail (+2: drawable suffix invariant + drawable
+  uniqueness invariant contract tests)
+- 27 IT PASS + 0 SKIP (chip IT un-disabled — W4-B 트리오 종결의 자연
+  acceptance gate)
+- T17 5/5 + T20 5/5 regression guards PASS
+- acceptance gate `activity_basic` + `activity_basic_minimal` +
+  `activity_minimal` glyph dark-pixel PASS
+- `MaterialFidelityIntegrationTest` 4/4 PASS
+- `LayoutlibResourceBundleDrawableTest` 8 cases (suffix + uniqueness 두
+  invariant lock-in)
+
+W4-B-C close 의 핵심 (bytecode-grounded 1-line semantic change):
+- `AppLibraryResourceConstants.kt`: static `DRAWABLE_PLACEHOLDER_VALUE =
+  "@axp:drawable-xml"` 폐기 → `DRAWABLE_PLACEHOLDER_PREFIX = "axp/drawable/"`
+  + `DRAWABLE_PLACEHOLDER_SUFFIX = ".xml"` + `drawablePlaceholderValue(name)
+  = "axp/drawable/" + name + ".xml"` helper 추가.
+- `LayoutlibResourceBundle.kt:260`: bundle build 의 DRAWABLE 분기가 helper
+  호출로 전환.
+- `LayoutlibResourceBundleDrawableTest.kt`: 기존 placeholder test rename +
+  2 신규 contract test (suffix invariant + uniqueness invariant).
+- `LayoutlibRendererIntegrationTest.kt`: chip IT 의 @Disabled 제거 + KDoc
+  rewrite + Refactor-on-Sight 영문화 (Korean → English 전체 + phase identifier
+  제거).
+- bytecode 증거 (`/tmp/w4bc/Resources_Delegate-disasm.txt` +
+  `/tmp/w4bc/ResourceHelper-disasm.txt`):
+  - `ResourceHelper.getDrawable` offsets 132-158: `value.toLowerCase().
+    endsWith(".xml") || resourceType == AAPT` 의 .xml gate 가 callback
+    routing 결정. 양쪽 false → asset / file resource path → null → throw
+    `Resources$NotFoundException`.
+  - `Resources_Delegate.getDrawable` offsets 24-44 + 109-119: JVM-static
+    `sDrawableCache` (LruCache) 가 value 문자열 key 로 `ConstantState`
+    캐시. 단일 placeholder 공유 시 모든 drawable 이 첫 drawable 의
+    `ConstantState` 로 aliasing.
+  - 두 contract 동시 충족: name 인코딩 (cache key uniqueness) + .xml suffix
+    (callback gate).
+- sibling routing asymmetry confirmed: `Resources_Delegate.getAnimation` 의
+  offset 23 은 .xml gate 없이 `getXmlBlockParser` 직접 호출 → 기존
+  `ANIMATOR_PLACEHOLDER_VALUE = "@axp:animator-xml"` 영향 없음. ColorStateList
+  은 별도 `ResourceHelper.getColorStateList` entry → `COLOR_STATE_LIST_
+  PLACEHOLDER_VALUE` 영향 없음. DRAWABLE 만 .xml gate 의 영향 받음.
+
+W4 phase status (모든 active surface 종결):
+- W3D4-δ-A~D: CLOSED ✓
+- tier3-glyph: CLOSED ✓
+- W4-D (runtime-classpath.txt hardening): CLOSED ✓
+- W4-A (drawable XML feed mirror): CLOSED ✓
+- W4-B-drawable: CLOSED ✓
+- W4-B-A (chip stateListAnimator — style item body trim): CLOSED ✓
+  (`c126512`)
+- W4-B-B (chip TextAppearance via macro): CLOSED ✓ (`e78d969`)
+- W4-B-C (chip drawable abc_vector_test placeholder): CLOSED ✓
+  (`c4475c3`)
+- W4-C (namespace-aware mode): hold (no trigger)
+- W4-E (R$styleable layer): hold (no trigger)
+
+Cold-read 6 docs (이 순서):
+1. `docs/work_log/2026-05-08_w4-b-c-drawable/handoff.md` (본 prompt 의
+   source — W4-B-C close + W4 next candidate decision)
+2. `docs/work_log/2026-05-08_w4-b-c-drawable/session-log.md` (W4-B-C 정확한
+   file diff + bytecode evidence + dual-source review)
+3. `docs/work_log/2026-05-08_w4-b-b-macro/handoff.md` (W4-B-B close —
+   `<macro>` element 파싱)
+4. `docs/work_log/2026-05-08_w4-b-a-trim/handoff.md` (W4-B-A close —
+   style item body trim)
+5. `docs/work_log/2026-05-07_w4-candidate-b-chip/handoff.md` (W4-B
+   drawable feed + chip fixture entry)
+6. `docs/work_log/2026-05-07_w4-candidate-d-hardening/handoff-w4-d-close.md`
+   (W4 candidate 카탈로그)
+
+원본 기획안 (필수 cross-read):
+- `docs/plan/03-roadmap.md` (master roadmap, historical/superseded by `06 §6`
+  + `08 §1`)
+- `docs/plan/04-open-questions-and-risks.md` (risk register R1-R9)
+- `docs/MILESTONES.md` (W1-W6 gate 체크포인트)
+- `docs/superpowers/specs/2026-04-29-w3d4-material-fidelity-design.md` (W3D4
+  phase design — chain walker reference)
+
+진행:
+
+0. 베이스라인 verify
+   - cd server && ./gradlew test --console=plain
+     → BUILD SUCCESSFUL — 258 unit / 0 fail
+   - ./gradlew :layoutlib-worker:test -PincludeTags=integration --console=plain
+     → 27 IT PASS + 0 SKIP
+
+1. User priority 결정 — 세 path 중 선택:
+
+   ### path 1 — widget extension (visual fidelity priority, 권장)
+
+   새 Material widget 1 종 fixture XML 추가 → 그 widget 의 escalation chain
+   surface. chip 의 W4-B 트리오 (trim + macro + placeholder) 가 multi-round
+   depth 패턴의 precedent — 새 widget 도 비슷한 깊이 가능.
+
+   surface variety 기대 순서:
+   - `activity_textinputlayout.xml` — TextInputLayout + TextInputEditText.
+     TextAppearance + drawable + animator state interaction chip 과 유사.
+   - `activity_snackbar.xml` — Snackbar / BaseTransientBottomBar. Round 6
+     Codex Q4 census 가 `BaseTransientBottomBar.checkAppCompatTheme` 별도
+     path 로 flag.
+   - `activity_materialswitch.xml` — MaterialSwitch. compact widget,
+     단순할 가능성.
+   - `activity_badge.xml` — BadgeDrawable. standalone Drawable, view
+     hierarchy 와 별개.
+
+   각 widget = multi-round escalation 가능성. small fix → implementation
+   phase + dual-source single-shot review. large design → plan v6 + Round 7
+   Codex+Claude planning pair-review (LM-G + LM-W4-D-B — codex 직접 CLI,
+   model 명시 회피, reasoning effort xhigh).
+
+   ### path 2 — namespace-aware mode (design integrity priority)
+
+   `docs/superpowers/specs/2026-05-XX-w4-namespace-aware.md` plan v6 +
+   Round 7 Codex+Claude planning pair-review 필수 (CLAUDE.md §Codex).
+   RES_AUTO collapse → ns-aware split. RJarSymbolSeeder + AarResourceWalker
+   + LayoutlibResourceBundle.byNs 모두 ns-aware refactor. active fail
+   trigger 없음 — cross-AAR same-name conflict 가 실제 bug 로 surface 시 또는
+   future widget extension 에서 발견 시 의미. Q6 open critique slot pair-
+   review template 적용.
+
+   ### path 3 — hold (no active trigger)
+
+   W4-C 와 W4-E 둘 다 hold 유지. 실 surface bug 등장 시에만 진입.
+
+2. path 선택 후:
+
+   - **path 1 (widget extension)**: 새 fixture XML 추가 + IT 측정 → fail
+     surface 분류 (LM-W3D4-β-H + δ-E entry-point comparison: stack-trace
+     entry-point 비교로 layer shift 식별). 각 fail → empirical probe
+     (LM-W4-B-E 적용 — 60-min budget for bytecode disasm + runtime probe
+     before plan-writing). small fix → implementation phase, dual-source
+     single-shot review (Claude reviewer subagent + Codex direct CLI). large
+     design → plan v6 + Round 7 Codex+Claude planning pair-review (LM-G +
+     LM-W4-D-B: codex 직접 CLI, model 명시 회피, reasoning effort xhigh).
+
+   - **path 2 (namespace-aware)**: plan v6 design 먼저. Round 7 Codex+Claude
+     planning pair-review 필수. Q6 open critique slot. GO 승인 후 12-step
+     transition. T17 + T20 regression guard 모든 step 통과 의무.
+
+3. carry-forward LMs (handoff §4 의 30 항목 — 본 phase 의 W4-B-C close 로
+   28 → 30 으로 증가. 모두 다음 세션 진입 시 내재화):
+
+   - LM-W3D4-β-D~H, LM-W3D4-γ-A~C, LM-W3D4-δ-A~I, LM (CLAUDE.md Three Hard
+     Rules), LM-G, LM-W4-D-A/B
+   - LM-W4-B-A (close ✓ — `c126512`): chip stateListAnimator callback
+     bypass — root cause = StyleItem body whitespace
+   - LM-W4-B-B (close ✓ — `e78d969`): chip TextAppearance NPE — root cause
+     = `<macro>` element 미파싱
+   - LM-W4-B-C (carry): subagent 가설 propagation 위험 — file:line read 가
+     ground truth
+   - LM-W4-B-D (carry): Kotlin default-arg + trailing-lambda 회귀
+   - LM-W4-B-E (vindicated 3 회, carry): handoff hypothesis 도 hypothesis.
+     plan-writing 전 60-min empirical probe (bytecode disasm + runtime probe).
+     W4-B-A α/β/γ rejection, W4-B-B path α/β/γ rejection, W4-B-C bytecode-
+     evidence-first investigation 모두 trigger
+   - LM-W4-B-F (carry): NamespaceAwareValueParser top-level `<item type=...>`
+     trim 미적용 — 회귀 시 확장
+   - LM-W4-B-G (carry): AAPT2 silent feature gap 패턴 — `<macro>` (Material 3)
+     + future `<sample-data>` / `<overlayable>` / `<style-item>`
+   - LM-W4-B-H (close ✓ — `c4475c3`): chip drawable abc_vector_test
+     placeholder — root cause = `ResourceHelper.getDrawable` `.xml` gate +
+     `Resources_Delegate.sDrawableCache` aliasing
+   - LM-W4-B-I (carry): Material widget strict-consumer pattern — strict-
+     consumer chain 진단 budget 우선
+   - **LM-W4-B-J (신규)**: sibling-routing asymmetry — `Resources_Delegate.
+     get<Type>` 가 type-specific value-format gate 보유 가능. 새 ResourceType-
+     routed XML feed 추가 시 `Resources_Delegate.get<Type>` + 내부
+     `ResourceHelper.get<Type>` (있다면) 양쪽 disasm 으로 value-format gate
+     존재 여부 사전 확인 의무.
+   - **LM-W4-B-K (신규)**: `sDrawableCache` JVM-static; cross-render
+     staleness 이론적. per-name uniqueness 가 single-render 내 aliasing 완화.
+     out-of-scope until 실 cross-render fail surface.
+   - **LM-W4-B-L (신규)**: Refactor-on-Sight obligation pattern — multi-edit
+     Kotlin source file 매 commit 마다 non-English text + phase identifier
+     사전 self-audit 의무. W4-B-A (NamespaceAwareValueParser) 와 W4-B-C
+     (AppLibraryResourceConstants + LayoutlibRendererIntegrationTest) 양쪽
+     catch — 표준 pre-commit step.
+
+4. candidate close 시 docs/work_log/ entry 추가 + commit + push (CLAUDE.md
+   task-unit completion 규약).
+
+CLAUDE.md 규약 준수 (brace own-line, no default params, Zero Tolerance for
+Magic Numbers/Strings, comments 영문 only / function-structure only per
+Three Hard Rules, Refactor-on-Sight per §4). LM-G + LM-W4-D-B planning
+phase 진입 시 적용 (codex 직접 CLI, no `--model` flag, reasoning effort
+xhigh). 실 implementation 은 subagent-driven 가능 (LM-W3D4-β-G `unzip
+--directory /tmp/w4-*` 의무).
+
+mcp-builder, plugin-dev, mcp-server-dev 스킬은 본 phase 와 무관 — 사용
+회피. 에이전트 팀 dispatch 는 CLAUDE.md §Agent Team Dispatch 따라 mode
+선택 (subagent mode wins for single-turn parallel research/review;
+teammate mode for multi-turn supervised collaboration). pair-review 가
+필요한 planning phase 만 강제 (CLAUDE.md §Codex).
+
+에이전트 팀 구동하고 각종 스킬 사용해서 철저하게 분석/검토하면서 진행해줘.
+새 세션에서 이어가는 게 낫다고 판단되기 전까지 쭈욱 진행해도 좋아.
