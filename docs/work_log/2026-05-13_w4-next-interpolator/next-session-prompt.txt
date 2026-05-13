@@ -1,0 +1,382 @@
+W4-NEXT phase 2 — AAR `res/layout` feed design (LM-W4-NEXT-LAYOUT)
+plan v6 + Round 7 Codex+Claude planning pair-review territory per
+CLAUDE.md §Codex + Codex Q4 trigger criterion (vindicated in W4-NEXT
+phase 1 closure).
+
+직전 commit `8fc426d` `feat(w4-next-a): interpolator XML feed mirror —
+MotionUtils.resolveThemeInterpolator TYPE_STRING gate now satisfied`.
+본 세션 첫 작업 = empirical pre-plan probe (60-120 min) → plan v6
+design writeup → Round 7 Codex+Claude planning pair-review → GO →
+implementation phase → dual-source single-shot review → close LM-W4-
+NEXT-LAYOUT + un-disable textInputLayout IT.
+
+현 시점 상태 (HEAD = `8fc426d`):
+- 272 unit PASS / 0 fail (+14 from 258 baseline: 7 bundle interpolator
+  + 4 walker interpolator + 2 callback INTERPOLATOR branch + 1 bundle
+  dup test extension)
+- 27 IT PASS + 1 SKIP (textInputLayout @Disabled pending 본 phase)
+- walker stats: walked 41 AARs, 13 with res, 191 color-state-lists,
+  32 animator-xmls, 132 drawable-xmls, **18 interpolator-xmls**
+- T17 5/5 + T20 5/5 + MaterialFidelity 4/4 + activity_basic +
+  activity_basic_minimal + activity_minimal + activity_chip 모두 PASS
+- LayoutlibResourceBundleInterpolatorTest 7/7 + Aar ResourceWalker
+  InterpolatorTest 4/4 + MinimalLayoutlibCallbackColorParserTest 10/10
+  (+2 INTERPOLATOR miss/hit)
+- dual-source review APPROVE (Claude reviewer subagent + Codex direct
+  CLI). Codex 가 offset 316-338 common-tail behavior 독립 corroborate
+  — Claude reviewer Finding 4 pushback 가 정확함을 file:line evidence
+  로 verify.
+
+## §1 본 세션 entry = AAR `res/layout` feed
+
+### §1.1 fail surface
+
+textInputLayout IT (`@Disabled`) 의 stderr probe 출력 (W4-NEXT phase 1
+세션 의 임시 println 기록):
+
+```
+[axp.probe] getParser type=interpolator ns=RES_AUTO name=m3_sys_motion_easing_emphasized_decelerate value=axp/interpolator/m3_sys_motion_easing_emphasized_decelerate.xml
+[axp.probe] getParser type=interpolator ns=RES_AUTO name=m3_sys_motion_easing_linear value=axp/interpolator/m3_sys_motion_easing_linear.xml
+[axp.probe] getParser type=layout ns=RES_AUTO name=design_text_input_start_icon value=design_text_input_start_icon
+[LayoutlibRenderer] createSession result: status=ERROR_INFLATION
+  msg=No Input specified (position:START_DOCUMENT null@0:0)
+  exc=XmlPullParserException
+```
+
+interpolator path 정상 (3 callback HIT). 새 fail = TextInputLayout
+inflate 가 `design_text_input_start_icon` (ResourceType.LAYOUT) 요청.
+`res/layout/design_text_input_start_icon.xml` 가 `material-1.12.0.aar`
+안 존재. AarResourceWalker 가 `res/layout/*.xml` 미enumerate, bundle
+LAYOUT entries 없음, MinimalLayoutlibCallback.getParser 가 ResourceType.
+LAYOUT branch 없음 → callback null 반환 → Bridge fallback `Parser
+Factory.create(value)` (blank parser) → "No Input specified".
+
+### §1.2 mechanism
+
+`Resources_Delegate.getLayout(Resources, int)` 가 ResourceHelper.
+getXmlBlockParser 로 위임 (Resources_Delegate getXml/getAnimation
+패턴과 동일 — bytecode 사전 verify 필수, LM-W4-B-J 적용):
+
+```
+ResourceHelper.getXmlBlockParser(BridgeContext, ResourceValue):
+  offset 26-41: !value.isFramework() → callback.getParser(value)
+  offset 43:    callback returns null → ParserFactory.create(value)
+                (blank parser, no input)
+```
+
+walker 의 value fallback (Resources_Delegate.getResourceValue offset
+187-217) 가 bundle entry 부재 시 `name` 을 `value` 필드로 set →
+callback 의 layoutResource.value = `design_text_input_start_icon`
+(bare name, path 도 아님).
+
+### §1.3 세 path 후보 (plan v6 round 에서 evaluate)
+
+Codex 의 planning-phase Q4 trigger 가 본 경우를 plan v6 territory 로
+명시. W4-A-sibling 단순 mirror 가 아닌 design 결정 영역.
+
+#### path δ1 — mechanical W4-A-sibling mirror
+
+`collectLayoutXmls` (AarResourceWalker) + `ParsedNsEntry.LayoutXml` +
+bundle byType[LAYOUT] entries + per-name path-style placeholder
+(`axp/layout/<name>.xml`) + callback ResourceType.LAYOUT routing.
+existing pattern 의 가장 작은 delta. 단 W4-A 의 5번째 sibling helper
+도입으로 copy-mirror 의 redundancy 가 노출 (LM-W4-NEXT-AAPT-XMLS).
+
+#### path δ2 — data-driven feed registry
+
+4 existing sibling helpers (color / animator / drawable / interpolator)
++ 새 layout helper 를 단일 data-driven registry 로 refactor. higher
+initial cost — 향후 AAR resource type (font / raw / transition /
+mipmap / xml) 에서 payback. wider regression surface — T17 + T20 +
+MaterialFidelity + chip + basic + minimal 모든 step 통과 의무.
+
+가능 shape:
+
+```kotlin
+internal enum class AarFeedKind(val dirPrefix: String, val resType: ResourceType, val placeholderPrefix: String) {
+    COLOR_STATE_LIST("res/color/", ResourceType.COLOR, "axp/color/"),
+    ANIMATOR_XML("res/animator/", ResourceType.ANIMATOR, "axp/animator/"),
+    DRAWABLE_XML("res/drawable/", ResourceType.DRAWABLE, "axp/drawable/"),
+    INTERPOLATOR_XML("res/interpolator/", ResourceType.INTERPOLATOR, "axp/interpolator/"),
+    LAYOUT_XML("res/layout/", ResourceType.LAYOUT, "axp/layout/"),
+}
+```
+
+NsBucket 의 4 (now 5) Map<String, String> fields 도 단일 Map<Aar
+FeedKind, Map<String, String>> 로 통합 가능. callback.getParser
+의 when branch 도 data-driven dispatch.
+
+#### path δ3 — selective layout pass
+
+실 IT probe 가 요청한 layout XML 만 enumerate. bundle footprint 작음
+— 단 walker 의 runtime feedback loop 가 현재 없음 (현 architecture
+는 startup-time bundle build). probe-driven on-demand 가능한지 design
+검토 필요.
+
+### §1.4 plan v6 round 에서 추가 evaluate 항목
+
+- W4-B-C drawable placeholder shape (`axp/drawable/<name>.xml`) + W4-
+  NEXT interpolator (`axp/interpolator/<name>.xml`) 가 single helper
+  `axp/<resource-type>/<name>.xml` 로 일반화 가능한지 (data-driven
+  feed registry 와 자연 연계).
+- `Resources_Delegate.getLayout(Resources, int)` 의 자체 value-format
+  gate 존재 여부 (LM-W4-B-J operationalization for LAYOUT sibling).
+  disasm `Resources_Delegate-full-disasm.txt` 의 `static *.getLayout
+  (Resources, int)` 신호 — `getXml` 패턴과 동일 한지 확인.
+- `BridgeInflater.inflate(XmlPullParser, ViewGroup, boolean)` 가
+  parser 를 어떻게 consume 하는지. LayoutInflater 는 DrawableInflater
+  / AnimatorInflater 와 다른 consumer pattern (View instantiation +
+  `<include>` / `<merge>` / `<ViewStub>` / `<view class=>` / `<fragment>`
+  / `<view-class>` 등 layout-specific 구문 처리). `SelectorXmlPullParser
+  .fromString` 가 호환되는지 verify 의무.
+- AAR layout XML 의 `<include>` / `<merge>` 가 recursive layout
+  reference 를 트리거할 가능성 — `design_text_input_start_icon` 가
+  내부에 또 다른 `@layout/...` 참조하는지 disasm.
+
+## §2 다음 세션 진입 단계
+
+### §2.1 cold-read 권장 docs (이 순서)
+
+1. **`docs/work_log/2026-05-13_w4-next-interpolator/handoff.md`** (본 prompt 의 source — interpolator close + 본 phase entry)
+2. `docs/work_log/2026-05-13_w4-next-interpolator/session-log.md` (W4-NEXT phase 1 의 정확한 file diff + bytecode evidence + dual-source review verdict APPROVE)
+3. `docs/work_log/2026-05-08_w4-b-c-drawable/handoff.md` (W4-A drawable feed pattern reference — δ1/δ2 mirror precedent)
+4. `docs/work_log/2026-05-08_w4-b-c-drawable/session-log.md` (W4-B-C bytecode evidence — Resources_Delegate.getDrawable + ResourceHelper sibling routing precedent)
+5. `docs/work_log/2026-05-08_w4-b-b-macro/handoff.md` (NamespaceAwareValueParser silent feature gap pattern reference)
+6. `docs/work_log/2026-05-07_w4-candidate-d-hardening/handoff-w4-d-close.md` (W4 candidate 카탈로그 + namespace-aware 의 hold 근거)
+
+원본 기획안 (필수 cross-read):
+- `docs/plan/03-roadmap.md` (master roadmap, historical/superseded by `06 §6` + `08 §1`)
+- `docs/plan/04-open-questions-and-risks.md` (risk register R1-R9)
+- `docs/MILESTONES.md` (W1-W6 gate 체크포인트)
+- `docs/superpowers/specs/2026-04-29-w3d4-material-fidelity-design.md` (W3D4 chain walker reference — bundle byType + Theme.resolveAttribute path)
+
+### §2.2 진행
+
+#### 0. 베이스라인 verify
+```
+cd server && ./gradlew test --console=plain
+  → BUILD SUCCESSFUL — 272 unit / 0 fail
+./gradlew :layoutlib-worker:test -PincludeTags=integration --console=plain
+  → 27 IT PASS + 1 SKIP (textInputLayout @Disabled)
+```
+
+#### 1. empirical pre-plan probe (LM-W4-B-E 적용, 60-120 min budget)
+
+a. **Resources_Delegate.getLayout disasm** — LM-W4-B-J operationalization:
+   ```
+   mkdir -p /tmp/w4-layout && cd /tmp/w4-layout && \
+     unzip -o /home/bh-mark-dev-desktop/workspace/android_xml_previewer/server/libs/layoutlib-dist/android-34/layoutlib-14.0.11.jar \
+       'android/content/res/Resources_Delegate.class' \
+       'com/android/layoutlib/bridge/impl/ResourceHelper.class' \
+       'com/android/layoutlib/bridge/android/BridgeInflater.class' && \
+     javap -p -c android/content/res/Resources_Delegate.class > Resources_Delegate-disasm.txt && \
+     javap -p -c com/android/layoutlib/bridge/impl/ResourceHelper.class > ResourceHelper-disasm.txt && \
+     javap -p -c com/android/layoutlib/bridge/android/BridgeInflater.class > BridgeInflater-disasm.txt
+   ```
+   - `Resources_Delegate.getLayout(Resources, int)` 의 정확한 offset
+     trace — `getXml` 패턴과 동일한지 (callback path 진입) verify.
+   - 만약 `getLayout` 가 별도 path (e.g. `BridgeContext.parseClass`,
+     `LayoutInflater.parseInclude`) 를 타면 W4-A-sibling 패턴 부적합.
+
+b. **BridgeInflater.inflate consumer pattern** — LayoutInflater vs
+   DrawableInflater/AnimatorInflater 의 parser consumption 차이 확인.
+   `<include>` / `<merge>` / `<ViewStub>` / `<view class=>` 등의 special
+   element 처리 disasm.
+
+c. **design_text_input_start_icon body inspection**:
+   ```
+   cd /tmp/w4-layout && \
+     unzip -o /home/bh-mark-dev-desktop/.gradle/caches/modules-2/files-2.1/com.google.android.material/material/1.12.0/e493b7ac7fc4b8ca48527e0199f9961652711ac3/material-1.12.0.aar \
+       'res/layout/design_text_input_start_icon.xml'
+   cat res/layout/design_text_input_start_icon.xml
+   ```
+   - 내부에 `<include>` / `<merge>` / class reference 가 있는지 확인.
+   - recursive layout reference 트리거 가능성 evaluate.
+
+d. **temp probe (revert 후 ship)**: MinimalLayoutlibCallback.getParser
+   의 LAYOUT branch 임시 추가 + bundle.getLayoutXml stub + activity_
+   textinputlayout IT 의 @Disabled 임시 제거 + 1 run → ERROR_INFLATION
+   의 다음 layer surface 노출. 결과 record 후 revert.
+
+#### 2. plan v6 design writeup
+
+`docs/superpowers/specs/2026-05-XX-w4-next-aar-layout-feed.md` 생성.
+
+구조 (W3D4 / W4-NEXT spec 패턴 따라):
+- §1 motivation + LM-W4-NEXT-LAYOUT empirical evidence
+- §2 三 path 후보 (δ1/δ2/δ3) 비교 — implementation cost / regression
+  surface / forward-compatibility (font/raw/transition/mipmap/xml feed)
+- §3 12-step transition plan (chosen path 의 file-by-file 변경)
+- §4 regression guard contract — T17 + T20 + MaterialFidelity + chip
+  + basic + minimal + 신규 LayoutInterpolator IT acceptance gate
+- §5 close criteria — textInputLayout IT un-disabled + PNG > 1000 bytes
+  + magic header
+- §6 Round 7 pair-review questions (Q1-Q6 — Q6 open critique slot per
+  feedback memory)
+
+#### 3. Round 7 Codex+Claude planning pair-review (CLAUDE.md §Codex 의무)
+
+LM-G + LM-W4-D-B 적용:
+- codex 직접 CLI: `codex exec --skip-git-repo-check --sandbox danger-full-access -c model_reasoning_effort=xhigh`
+- no `--model` flag (CLI default resolves to latest GPT)
+- Claude side: feature-dev:code-architect subagent 사용 가능 OR direct
+  Claude analysis. each half MUST NOT see the other's output while
+  working.
+
+Round 7 prompt structure (W4-NEXT phase 1 의 codex-pair-prompt.md
+패턴 mirror):
+- Q1: path δ1 vs δ2 vs δ3 ranking + primary deciding signal
+- Q2: forward-compatibility — 향후 LAYOUT 이후 4-5 더 AAR resource
+  type 등장 시 chosen path 가 graceful 확장 가능한지
+- Q3: empirical probe budget + first probe target (60-120 min)
+- Q4: plan v6.x trigger criterion — chosen path 가 자체 sub-paths
+  도입 시 추가 Round 7 trigger
+- Q5: KILL POINT (mandatory)
+- Q6: open critique slot (per feedback memory feedback_pair_review_q6_slot)
+
+consolidation:
+- full convergence (set + order) → GO
+- set converges, order diverges → primary objective 로 tie-break
+- set diverges → Codex judge round (top model + xhigh + both
+  positions + evidence)
+
+#### 4. GO 후 implementation phase
+
+CLAUDE.md §Codex "Pairs NOT required for ALL implementation-phase
+work" — dual-source single-shot review (Claude reviewer subagent +
+Codex direct CLI sanity-check) only. W4-B-A/B/C + W4-NEXT phase 1
+precedent.
+
+각 step 마다 T17 + T20 + MaterialFidelity + chip + basic + minimal
+regression guard PASS 의무. layout feed 추가가 다른 widget render
+path 회귀 야기 시 즉시 fix.
+
+#### 5. textInputLayout IT close
+
+`@Disabled` annotation 제거 + IT body 의 KDoc update (plan v6 phase
+2 close 명시). chip IT precedent: W4-B trio 의 W4-B-C close 에서
+un-disabled.
+
+#### 6. work_log + commit + push (CLAUDE.md task-unit completion)
+
+`docs/work_log/2026-05-XX_w4-next-b-aar-layout/` (Pattern 3 new
+folder):
+- session-log.md (정확한 file diff + bytecode evidence + dual-source
+  review verdict)
+- handoff.md (next-session entry — namespace-aware OR hold OR next
+  widget)
+- next-session-prompt.txt (본 prompt 패턴 mirror)
+
+commit message: `feat(w4-next-b): AAR res/layout feed — textInputLayout
+inflation now resolves design_text_input_start_icon` (or 비슷한
+shape — chosen path 명시).
+
+push to origin/main.
+
+## §3 회피해야 할 LM (combined 35 — W3D4 phase 19 + W4-D 2 + W4-B 9 + W4-NEXT 5)
+
+| LM | 1-line 핵심 |
+|---|---|
+| LM-W3D4-β-D~H | KDoc backtick + assertNotNull ban + IT-tag + subagent unzip /tmp + acceptance fail surface classification |
+| LM-W3D4-γ-A~C | reviewer prompt + Long.decode + ThemeEnforcement multi-sentinel |
+| LM-W3D4-δ-A~I | spec verify / NsBucket type-specific / runtime-classpath assertion / IT-tagged RED-on-main / entry-point comparison / Rule 2 OUT-OF-SCOPE / annotation message technical-claim verify / chain-walker IT render-path divergence / RenderResources.applyStyle clear() ban |
+| LM (CLAUDE.md Three Hard Rules) | All new code KDoc / inline English-only, function/structure-only |
+| LM-G | codex sandbox bypass via direct CLI (planning phase only) |
+| LM-W4-D-A | reviewer agent catches new string literals + KDoc modification-history phrasing |
+| LM-W4-D-B | Codex CLI explicit `--model` flag rejected by ChatGPT account; default model + reasoning effort only |
+| LM-W4-B-A (close ✓ `c126512`) | chip stateListAnimator callback bypass — StyleItem body whitespace |
+| LM-W4-B-B (close ✓ `e78d969`) | chip TextAppearance NPE — `<macro>` element parser miss |
+| LM-W4-B-C (carry) | subagent 가설 propagation 위험 — file:line read 가 ground truth |
+| LM-W4-B-D (carry) | Kotlin default-arg + trailing-lambda 회귀 |
+| LM-W4-B-E (vindicated 4x, carry) | handoff hypothesis 도 hypothesis. plan-writing 전 60-120 min empirical probe (bytecode disasm + runtime probe). 본 phase 도 trigger |
+| LM-W4-B-F (carry) | NamespaceAwareValueParser top-level `<item type=...>` trim 미적용 — 회귀 시 확장 |
+| LM-W4-B-G (carry) | AAPT2 silent feature gap pattern |
+| LM-W4-B-H (close ✓ `c4475c3`) | chip drawable abc_vector_test — per-name `.xml`-suffixed placeholder |
+| LM-W4-B-I (carry) | Material widget strict-consumer pattern — strict-consumer chain diagnosis budget |
+| LM-W4-B-J (carry, partially verified) | Sibling-routing asymmetry — disasm `Resources_Delegate.get<Type>` + inner `ResourceHelper.get<Type>` for any new ResourceType-routed XML feed. **본 phase 의 LAYOUT sibling 에 직접 적용 — Resources_Delegate.getLayout + BridgeInflater.inflate disasm 필수** |
+| LM-W4-B-K (carry) | `sDrawableCache` JVM-static; cross-render staleness theoretical |
+| LM-W4-B-L (carry, vindicated again) | Refactor-on-Sight self-audit BEFORE reviewer run |
+| LM-W4-NEXT-A (carry, from pair-review Q5) | Widget extension 의 lucky-value false-positive 위험 — bundle dup log assertion or documented rationale recommended |
+| LM-W4-NEXT-B (carry, from pair-review Q6) | `/tmp/w4*` artefact decay — handoff citations are pointers, regenerate before citing |
+| LM-W4-NEXT-C (carry, partially closed) | Pre-plan disasm of sibling routing operationalized. Pattern: every new ResourceType feed should disasm both layoutlib and AppCompat sibling entry points before plan-writing |
+| LM-W4-NEXT-MOTION (close ✓ `8fc426d`) | MotionUtils.resolveThemeInterpolator TYPE_STRING gate — per-name path-style placeholder satisfies via parseFloatAttribute-fail branch |
+| **LM-W4-NEXT-LAYOUT (carry — 본 phase entry)** | AAR `res/layout` feed empirically triggered by TextInputLayout via design_text_input_start_icon. plan v6 / Round 7 scope, not W4-A raw-XML sibling quick fix |
+| LM-W4-NEXT-MOTIONUTILS-A (carry) | Strict-consumer pattern via Theme.resolveAttribute + TypedValue.type assertion 은 resourceId-only consumer 와 다름. 새 placeholder shape 은 `@`/`#`/`true`/`false`/parseInt/parseFloatAttribute prefix 회피 |
+| **LM-W4-NEXT-AAPT-XMLS (carry — design)** | W4-A copy-mirror 가 3회 반복됨 (animator/drawable/interpolator). 4번째 (LAYOUT) + 가능 5번째+. 본 plan v6 round 에서 data-driven feed registry 도입 evaluate |
+| LM-W4-NEXT-CODEX-Q4-VINDICATED | Codex Q4 + Q6 가 본 phase 의 entry 를 empirically 사전 catch — 2번째 case (W4-B-C 의 Q5 KILL POINT + 본 phase 의 Q4 trigger criterion). planning-phase pair-review discipline empirically load-bearing |
+
+## §4 출발 환경 sanity
+
+```bash
+$ cd /home/bh-mark-dev-desktop/workspace/android_xml_previewer
+$ git log --oneline -5
+8fc426d feat(w4-next-a): interpolator XML feed mirror — MotionUtils.resolveThemeInterpolator TYPE_STRING gate now satisfied
+c663d24 docs(w4-b-c): paste-ready txt prompt for W4 next-candidate scope decision
+c4475c3 feat(w4-b-c): drawable placeholder per-name xml suffix — chip drawable resolution now wires through callback
+e78d969 feat(w4-b-b): macro element parsing — chip textAppearance via @macro/... indirection now resolves
+c126512 feat(w4-b-a): style item body trim — chip stateListAnimator callback now wires correctly
+
+$ cd server && ./gradlew test --console=plain | tail -3
+BUILD SUCCESSFUL — 272 unit total / 0 fail.
+
+$ ./gradlew :layoutlib-worker:test -PincludeTags=integration --console=plain
+... 27 IT PASS + 1 SKIP (textInputLayout @Disabled) ...
+BUILD SUCCESSFUL — 27 IT PASS + 1 SKIP.
+```
+
+regression guards:
+- T17 5-probe (W3D4-δ-A): `--tests "dev.axp.layoutlib.worker.resources.W3D4DeltaThemeChainDiagnosticTest"`
+- T20 5-probe (W3D4-δ-B): `--tests "dev.axp.layoutlib.worker.resources.W3D4DeltaBGateChainProbeTest"`
+- acceptance gate: `--tests "dev.axp.layoutlib.worker.LayoutlibRendererIntegrationTest" --tests "dev.axp.layoutlib.worker.LayoutlibRendererTier3MinimalTest"`
+- require throw guard (W4-D): `--tests "dev.axp.layoutlib.worker.resources.LayoutlibResourceValueLoaderTest"`
+- W4-NEXT interpolator (phase 1 lock-in): `--tests "*Interpolator*"`
+
+debug toggles (선택):
+- `-Daxp.debug.bundleShape=true` (LayoutlibResourceValueLoader bootstrap)
+- `-Daxp.debug.callback=true` (BridgeContext callback layer instrumentation)
+
+`/tmp/w4-next/*` + `/tmp/w4-tinput/*` artefacts (cleanup-policy
+independent, LM-W4-NEXT-B per 주의 — 재생성 필요 시):
+- `/tmp/w4-next/MotionUtils-disasm.txt` (`resolveThemeInterpolator` 0-72)
+- `/tmp/w4-tinput/BridgeContext-disasm.txt` (`resolveThemeAttribute` 95-350)
+- `/tmp/w4-tinput/Resources_Delegate-full-disasm.txt` (`getXml` 1679-, `getAnimation` 877-, `getResourceValue` 183-)
+- `/tmp/w4-tinput/ResourceHelper-full.txt` (`getXmlBlockParser` 415-)
+- `/tmp/w4-next/codex-pair-prompt.md` + `/tmp/w4-next/codex-pair-response.md` (planning-phase pair-review record)
+- `/tmp/w4-next/claude-pair-answer.md` (Claude independent answer, sealed)
+- `/tmp/w4-next/codex-review-response.md` (implementation-phase Codex
+  sanity-check, APPROVE — Codex 가 offset 316-338 common-tail 독립
+  corroborate)
+
+본 prompt 의 모든 artefact 인용은 LM-W4-NEXT-B 적용 — disk 부재 시
+재생성 후 인용. 단 본 prompt 안 내용은 `8fc426d` 의 work_log 에 의해
+이미 git-versioned (handoff.md + session-log.md).
+
+## §5 W4 phase status
+
+- W3D4-δ-A~D: **CLOSED ✓**
+- tier3-glyph: **CLOSED ✓**
+- W4-D (runtime-classpath.txt hardening): **CLOSED ✓**
+- W4-A (drawable XML feed): **CLOSED ✓**
+- W4-B-A/B/C (chip trilogy): **CLOSED ✓**
+- W4-NEXT phase 1 (interpolator XML feed): **CLOSED ✓** (`8fc426d`)
+- **W4-NEXT phase 2 (AAR `res/layout` feed): OPEN — 본 phase entry, plan v6 territory**
+- W4-C (namespace-aware mode): hold (no active trigger)
+- W4-E (R$styleable layer): hold (no active trigger)
+
+CLAUDE.md 규약 준수 (brace own-line, no default params, Zero Tolerance
+for Magic Numbers/Strings, comments 영문 only / function-structure
+only per Three Hard Rules, Refactor-on-Sight per §4). LM-G + LM-W4-D-B
+planning phase 진입 시 적용 (codex 직접 CLI, no `--model` flag,
+reasoning effort xhigh). 실 implementation 은 subagent-driven 가능
+(LM-W3D4-β-G `unzip --directory /tmp/w4-*` 의무).
+
+에이전트 팀 dispatch 는 CLAUDE.md §Agent Team Dispatch 따라 mode
+선택 (subagent mode wins for single-turn parallel research/review;
+teammate mode for multi-turn supervised collaboration). pair-review
+가 필요한 planning phase 만 강제 (CLAUDE.md §Codex).
+
+mcp-builder, plugin-dev, mcp-server-dev 스킬 필요하면 사용해줘.
+
+에이전트 팀 구동하고 각종 스킬 사용해서 철저하게 분석/검토하면서
+진행해줘. 새 세션에서 이어가는 게 낫다고 판단되기 전까지 쭈욱 진행
+해도 좋아.
