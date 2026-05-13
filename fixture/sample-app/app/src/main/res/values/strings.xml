@@ -6,4 +6,5 @@
     <string name="fixture_basic_button">Render me</string>
     <string name="fixture_custom_caption">Custom view via DexClassLoader (L3 escalation target)</string>
     <string name="fixture_chip_label">Assist</string>
+    <string name="fixture_text_input_hint">Email</string>
 </resources>

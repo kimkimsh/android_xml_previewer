@@ -15,10 +15,11 @@ import com.android.resources.ResourceType
  *  - styles / attrs: type-specific maps preserving StyleResourceValue and
  *    AttrResourceValue runtime types that the bridge casts to after defStyleAttr /
  *    defStyleRes resolution.
- *  - colorStateLists / animators / drawables: name → raw XML body, fed back into
- *    layoutlib through MinimalLayoutlibCallback.getParser when Bridge asks for an
- *    XmlResourceParser via ResourceHelper.getColorStateList, AnimatorInflater, or
- *    DrawableInflater respectively.
+ *  - colorStateLists / animators / drawables / interpolators: name → raw XML body,
+ *    fed back into layoutlib through MinimalLayoutlibCallback.getParser when Bridge
+ *    asks for an XmlResourceParser via ResourceHelper.getColorStateList,
+ *    AnimatorInflater, DrawableInflater, or AnimationUtils.loadInterpolator
+ *    respectively.
  */
 internal data class NsBucket(
     val byType: Map<ResourceType, Map<String, ResourceValue>>,
@@ -27,10 +28,14 @@ internal data class NsBucket(
     val colorStateLists: Map<String, String> = emptyMap(),
     val animators: Map<String, String> = emptyMap(),
     val drawables: Map<String, String> = emptyMap(),
+    val interpolators: Map<String, String> = emptyMap(),
 )
 {
     companion object
     {
-        val EMPTY: NsBucket = NsBucket(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap())
+        val EMPTY: NsBucket = NsBucket(
+            emptyMap(), emptyMap(), emptyMap(),
+            emptyMap(), emptyMap(), emptyMap(), emptyMap(),
+        )
     }
 }

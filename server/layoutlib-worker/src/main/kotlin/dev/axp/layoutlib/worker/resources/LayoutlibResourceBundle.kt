@@ -11,16 +11,18 @@ import com.android.ide.common.rendering.api.StyleResourceValueImpl
 import com.android.resources.ResourceType
 
 /**
- * W3D4 §3.1 #6: namespace-aware immutable resource bundle.
- * byNs = LinkedHashMap (ANDROID → RES_AUTO 결정 순회).
- * Mode 통일에 따라 ANDROID + RES_AUTO 2-bucket. duplicate 진단 로그.
+ * Namespace-aware immutable resource bundle. byNs is a LinkedHashMap with a
+ * deterministic ANDROID → RES_AUTO iteration order; the unified two-bucket layout
+ * collapses the original multi-namespace shape and logs a single diagnostic line
+ * on every duplicate.
  *
- * dedupe 정책 (η round 2):
- *  - SimpleValue / StyleDef: later-wins per namespace + duplicate 진단 1줄.
- *  - AttrDef: first-wins (W3D1 정책 보존, silent).
+ * Dedupe policy:
+ *  - SimpleValue / StyleDef: later-wins per namespace + one diagnostic line.
+ *  - AttrDef: first-wins (silent).
  *
- * cross-ns parent inference: StyleParentInference (W3D1) 그대로 활용 (namespace 무관).
- * round 2: parent 이름은 보존 — null 만 fallback. ns-agnostic chain walk 은 후속 phase 가 처리.
+ * Cross-namespace parent inference reuses StyleParentInference and stays
+ * namespace-agnostic. Parent names are preserved verbatim; only null falls
+ * back. Namespace-agnostic chain walking is the next phase's responsibility.
  */
 internal class LayoutlibResourceBundle private constructor(
     private val byNs: LinkedHashMap<ResourceNamespace, NsBucket>,
@@ -63,9 +65,9 @@ internal class LayoutlibResourceBundle private constructor(
     }
 
     /**
-     * W3D4-β T12: color state list (`<selector>` XML) 의 raw body lookup.
-     * MinimalLayoutlibCallback.getParser 가 Bridge ResourceHelper.getColorStateList 의
-     * input feed 단계에서 호출.
+     * Raw body lookup for `<selector>` color state-list XML. Bridge
+     * ResourceHelper.getColorStateList feeds the body through
+     * MinimalLayoutlibCallback.getParser at the input-feed step.
      */
     fun getColorStateListXml(ref: ResourceReference): String? =
         byNs[ref.namespace]?.colorStateLists?.get(ref.name)
@@ -89,7 +91,18 @@ internal class LayoutlibResourceBundle private constructor(
     fun getDrawableXml(ref: ResourceReference): String? =
         byNs[ref.namespace]?.drawables?.get(ref.name)
 
-    /** 진단/테스트 전용. */
+    /**
+     * Sibling to getDrawableXml — interpolator XML body lookup. MinimalLayoutlibCallback
+     * .getParser routes ResourceType.INTERPOLATOR through the same raw-XML feed
+     * mechanism; layoutlib's `Resources_Delegate.getXml` delegates to
+     * callback.getParser when AnimationUtils.loadInterpolator opens the XML by
+     * resourceId. Covers the Material 3 motion-easing interpolators that MotionUtils
+     * .resolveThemeInterpolator consumes for Fade transitions and ValueAnimator.
+     */
+    fun getInterpolatorXml(ref: ResourceReference): String? =
+        byNs[ref.namespace]?.interpolators?.get(ref.name)
+
+    /** Diagnostic / test accessors. */
     fun namespacesInOrder(): List<ResourceNamespace> = byNs.keys.toList()
     fun styleCountForNamespace(ns: ResourceNamespace): Int = byNs[ns]?.styles?.size ?: 0
     fun attrCountForNamespace(ns: ResourceNamespace): Int = byNs[ns]?.attrs?.size ?: 0
@@ -99,17 +112,17 @@ internal class LayoutlibResourceBundle private constructor(
         byNs[ns]?.animators?.size ?: 0
     fun drawableXmlCountForNamespace(ns: ResourceNamespace): Int =
         byNs[ns]?.drawables?.size ?: 0
+    fun interpolatorXmlCountForNamespace(ns: ResourceNamespace): Int =
+        byNs[ns]?.interpolators?.size ?: 0
 
     /**
-     * W3D4-γ T15: Bridge.init() 의 enumValueMap 인자용 export — framework (ANDROID) bucket 의
-     * 모든 AttrResourceValueImpl 에서 enum/flag 테이블을 추출하여 단일 Map<String, Map<String, Int>>
-     * 반환. layoutlib BridgeTypedArray.resolveEnumAttribute 가 ANDROID namespace attr 변환 시
-     * Bridge.sEnumValueMap.get(attrName).get("vertical") 형태로 조회 — Bridge.init 의 6번째
-     * 인자가 곧 sEnumValueMap.
-     *
-     * 비어있는 attr (enum/flag 자식 없음) 은 결과 map 에서 제외. RES_AUTO bucket 은 별도 경로
-     * (T14 의 getResource ATTR special-case + AttrResourceValueImpl.getAttributeValues) — 본
-     * helper 미관여.
+     * Exports framework (ANDROID-bucket) enum and flag tables for Bridge.init's
+     * enumValueMap argument (the sixth parameter, which becomes Bridge.sEnumValueMap).
+     * Aggregates the AttrResourceValueImpl enum / flag children of every ANDROID
+     * AttrDef into a single Map<String, Map<String, Int>>; an attr with no enum or
+     * flag children is omitted. RES_AUTO attrs are exported via the separate
+     * getResource ATTR special-case backed by AttrResourceValueImpl
+     * .getAttributeValues, so this helper stays framework-only.
      */
     fun frameworkEnumValueMap(): Map<String, Map<String, Int>>
     {
@@ -140,7 +153,8 @@ internal class LayoutlibResourceBundle private constructor(
                 val entries = perNamespaceEntries[ns] ?: continue
                 byNs[ns] = buildBucket(ns, entries)
             }
-            // 추가 ns 가 있다면 (W4+ namespace-aware 시) ordering 유지
+            // Preserve insertion order for any extra namespaces (forward-compatible
+            // hook for future namespace-aware bucket splits).
             for ((ns, entries) in perNamespaceEntries)
             {
                 if (ns !in canonicalOrder)
@@ -160,6 +174,7 @@ internal class LayoutlibResourceBundle private constructor(
             val colorStateListsMut = LinkedHashMap<String, String>()
             val animatorsMut = LinkedHashMap<String, String>()
             val drawablesMut = LinkedHashMap<String, String>()
+            val interpolatorsMut = LinkedHashMap<String, String>()
 
             for (e in entries) when (e)
             {
@@ -182,9 +197,10 @@ internal class LayoutlibResourceBundle private constructor(
                     {
                         val ref = ResourceReference(ns, ResourceType.ATTR, e.name)
                         val attr = AttrResourceValueImpl(ref, null)
-                        // W3D4-γ T14: <enum>/<flag> 자식 값 테이블을 AttrResourceValueImpl 에 주입.
-                        // BridgeTypedArray.resolveEnumAttribute 가 RES_AUTO attr 변환 시
-                        // getAttributeValues().get("vertical") 등으로 조회. value 는 boxed Integer
+                        // Inject <enum> / <flag> child value tables into
+                        // AttrResourceValueImpl so BridgeTypedArray.resolveEnumAttribute
+                        // can look them up via getAttributeValues().get("vertical")
+                        // when converting a RES_AUTO attr. Values are boxed Integer
                         // (Kotlin Int auto-box).
                         for ((enumName, enumValue) in e.enumValues)
                         {
@@ -196,15 +212,17 @@ internal class LayoutlibResourceBundle private constructor(
                         }
                         attrsMut[e.name] = attr
                     }
-                    // first-wins — 두 번째 등록은 silent (W3D1 정책 + round 4 empirical: 41 AAR
-                    // 안 nonempty-vs-nonempty conflict 0건, 첫 nonempty 가 항상 보존됨).
+                    // first-wins — a second registration is silent. Empirical scan
+                    // of the 41-AAR fixture found zero nonempty-vs-nonempty conflicts
+                    // so the first nonempty entry is always preserved.
                 }
                 is ParsedNsEntry.StyleDef -> styleDefs += e
                 is ParsedNsEntry.ColorStateList ->
                 {
-                    // W3D4-β T12: byType[COLOR] 에 placeholder ResourceValue 등록 →
-                    // BridgeContext 의 getResource 단계 통과 보장. value 는 magic placeholder
-                    // (callback.getParser 가 가로챔 — Bridge fallback ParserFactory.create 미도달).
+                    // Register a placeholder ResourceValue in byType[COLOR] so
+                    // BridgeContext.getResource always finds a non-null value. The
+                    // magic placeholder string is intercepted by callback.getParser,
+                    // so Bridge never falls back to ParserFactory.create.
                     val typeMap = byTypeMut.getOrPut(ResourceType.COLOR) { mutableMapOf() }
                     if (!typeMap.containsKey(e.name))
                     {
@@ -272,14 +290,39 @@ internal class LayoutlibResourceBundle private constructor(
                         drawablesMut[e.name] = e.rawXml
                     }
                 }
+                is ParsedNsEntry.InterpolatorXml ->
+                {
+                    val typeMap = byTypeMut.getOrPut(ResourceType.INTERPOLATOR) { mutableMapOf() }
+                    if (!typeMap.containsKey(e.name))
+                    {
+                        val ref = ResourceReference(ns, ResourceType.INTERPOLATOR, e.name)
+                        typeMap[e.name] = ResourceValueImpl(
+                            ref,
+                            AppLibraryResourceConstants.interpolatorPlaceholderValue(e.name),
+                            null,
+                        )
+                    }
+                    if (interpolatorsMut.containsKey(e.name))
+                    {
+                        System.err.println(
+                            "[LayoutlibResourceBundle] dup interpolator-xml '${e.name}' ns=${ns.packageName ?: "RES_AUTO"} from ${e.sourcePackage} — first-wins",
+                        )
+                    }
+                    else
+                    {
+                        interpolatorsMut[e.name] = e.rawXml
+                    }
+                }
             }
 
             val allStyleNames: Set<String> = styleDefs.mapTo(HashSet()) { it.name }
             for (def in styleDefs)
             {
                 val candidate = StyleParentInference.infer(def.name, def.parent)
-                // round 2: parent 이름은 보존 (cross-ns chain 의 ns-agnostic fallback 이 후속 chain walk 에서 처리).
-                // candidate 가 set 안에 있으면 그대로, 없어도 그대로 — null 만 그대로 null.
+                // Preserve the parent name verbatim — the cross-namespace
+                // chain walk handles the namespace-agnostic fallback. The candidate
+                // is kept whether or not it appears in this bundle's style set;
+                // only a null candidate stays null.
                 @Suppress("UNUSED_VARIABLE")
                 val inSet = candidate != null && candidate in allStyleNames
                 val parentName = candidate
@@ -305,6 +348,7 @@ internal class LayoutlibResourceBundle private constructor(
                 colorStateLists = colorStateListsMut.toMap(),
                 animators = animatorsMut.toMap(),
                 drawables = drawablesMut.toMap(),
+                interpolators = interpolatorsMut.toMap(),
             )
         }
     }

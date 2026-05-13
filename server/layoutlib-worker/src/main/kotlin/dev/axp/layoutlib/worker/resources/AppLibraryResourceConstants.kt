@@ -21,6 +21,15 @@ internal object AppLibraryResourceConstants
     const val AAR_ANIMATOR_DIR_PREFIX = "res/animator/"
 
     /**
+     * AAR ZIP entry prefix — interpolator XML directory. Material 1.12.0 ships 7
+     * Material 3 motion-easing interpolators under `res/interpolator/m3_sys_motion_*.xml`
+     * (linear, standard, standard_accelerate, standard_decelerate, emphasized,
+     * emphasized_accelerate, emphasized_decelerate). Bridge consumes these via
+     * AnimationUtils.loadInterpolator → Resources.getXml → LayoutlibCallback.getParser.
+     */
+    const val AAR_INTERPOLATOR_DIR_PREFIX = "res/interpolator/"
+
+    /**
      * AAR ZIP entry prefix — drawable XML directory (sibling to AAR_COLOR_DIR_PREFIX +
      * AAR_ANIMATOR_DIR_PREFIX). Material 1.12.0 ships ~73 drawable XMLs (35 vector,
      * 18 animated-vector, 10 shape, 3 selector, 1 inset, 1 layer-list, etc.). Style
@@ -80,6 +89,38 @@ internal object AppLibraryResourceConstants
 
     fun drawablePlaceholderValue(name: String): String =
         DRAWABLE_PLACEHOLDER_PREFIX + name + DRAWABLE_PLACEHOLDER_SUFFIX
+
+    /**
+     * Interpolator-XML ResourceValue placeholder generator. Two non-obvious
+     * BridgeContext contracts force the value shape to be (a) per-name unique and
+     * (b) NOT prefixed with `@`:
+     *
+     *  - `com.android.layoutlib.bridge.android.BridgeContext.resolveThemeAttribute`
+     *    inspects the resolved ResourceValue's value string. When the first
+     *    character is `@` (0x40) the TypedValue.type field is set to 1
+     *    (TYPE_REFERENCE). When the value matches none of `#`/`@`/`true`/`false`/
+     *    parseInt/parseFloatAttribute branches, the type falls through to 3
+     *    (TYPE_STRING). `com.google.android.material.motion.MotionUtils
+     *    .resolveThemeInterpolator` asserts `TypedValue.type == TYPE_STRING (3)`
+     *    immediately after Theme.resolveAttribute and throws
+     *    IllegalArgumentException("Motion easing theme attribute must be an
+     *    @interpolator resource for ?attr/motionEasing*Interpolator attributes
+     *    or a string for ?attr/motionEasing* attributes.") otherwise. Therefore
+     *    the placeholder must NOT start with `@`.
+     *
+     *  - `android.view.animation.AnimationUtils.loadInterpolator(Context, int)`
+     *    consumes the TypedValue.resourceId (set from ResourceValue.asReference
+     *    lookup in offset 316-338 of resolveThemeAttribute) by calling
+     *    `Resources.getXml(int)`, which routes through layoutlib's
+     *    `Resources_Delegate.getXml_Original` → `LayoutlibCallback.getParser`.
+     *    Per-name uniqueness keeps any downstream cache (sibling to
+     *    Resources_Delegate.sDrawableCache) keyed correctly.
+     */
+    const val INTERPOLATOR_PLACEHOLDER_PREFIX = "axp/interpolator/"
+    const val INTERPOLATOR_PLACEHOLDER_SUFFIX = ".xml"
+
+    fun interpolatorPlaceholderValue(name: String): String =
+        INTERPOLATOR_PLACEHOLDER_PREFIX + name + INTERPOLATOR_PLACEHOLDER_SUFFIX
 
     /** AAR ZIP entry — AndroidManifest.xml (used to extract the package attribute). */
     const val AAR_ANDROID_MANIFEST_PATH = "AndroidManifest.xml"

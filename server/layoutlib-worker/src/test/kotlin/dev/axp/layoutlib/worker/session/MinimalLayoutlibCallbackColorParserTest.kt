@@ -25,7 +25,7 @@ class MinimalLayoutlibCallbackColorParserTest
 {
 
     private fun newCallback(lookup: (ResourceReference) -> String?): MinimalLayoutlibCallback =
-        MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, lookup, { null }, { null })
+        MinimalLayoutlibCallback({ ClassLoader.getSystemClassLoader() }, { /* no-op */ }, lookup, { null }, { null }, { null })
 
     private fun newCallbackWithDrawable(
         colorLookup: (ResourceReference) -> String?,
@@ -37,6 +37,19 @@ class MinimalLayoutlibCallbackColorParserTest
             colorLookup,
             { null },
             drawableLookup,
+            { null },
+        )
+
+    private fun newCallbackWithInterpolator(
+        interpolatorLookup: (ResourceReference) -> String?,
+    ): MinimalLayoutlibCallback =
+        MinimalLayoutlibCallback(
+            { ClassLoader.getSystemClassLoader() },
+            { /* no-op */ },
+            { null },
+            { null },
+            { null },
+            interpolatorLookup,
         )
 
     private fun colorRv(name: String): ResourceValueImpl =
@@ -110,6 +123,46 @@ class MinimalLayoutlibCallbackColorParserTest
         }
         assertEquals(XmlPullParser.START_TAG, event)
         assertEquals("vector", p.name)
+        assertEquals(ResourceNamespace.RES_AUTO, p.layoutNamespace)
+    }
+
+    @Test
+    fun `getParser - INTERPOLATOR type + interpolator lookup miss returns null`()
+    {
+        val cb = newCallbackWithInterpolator { _ -> null }
+        val rv = ResourceValueImpl(
+            ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.INTERPOLATOR, "m3_sys_motion_easing_emphasized"),
+            "axp/interpolator/m3_sys_motion_easing_emphasized.xml",
+            null,
+        )
+        assertNull(cb.getParser(rv))
+    }
+
+    @Test
+    fun `getParser - INTERPOLATOR type + interpolator lookup hit feeds raw XML`()
+    {
+        val rawXml = """<?xml version="1.0" encoding="utf-8"?>
+            |<pathInterpolator xmlns:android="http://schemas.android.com/apk/res/android"
+            |    android:controlX1="0.2" android:controlY1="0"
+            |    android:controlX2="0" android:controlY2="1"/>""".trimMargin()
+        val cb = newCallbackWithInterpolator { ref ->
+            if (ref.name == "m3_sys_motion_easing_emphasized") rawXml else null
+        }
+        val rv = ResourceValueImpl(
+            ResourceReference(ResourceNamespace.RES_AUTO, ResourceType.INTERPOLATOR, "m3_sys_motion_easing_emphasized"),
+            "axp/interpolator/m3_sys_motion_easing_emphasized.xml",
+            null,
+        )
+        val parser = cb.getParser(rv)
+        assertNotNull(parser)
+        val p = parser!!
+        var event = p.next()
+        while (event != XmlPullParser.START_TAG && event != XmlPullParser.END_DOCUMENT)
+        {
+            event = p.next()
+        }
+        assertEquals(XmlPullParser.START_TAG, event)
+        assertEquals("pathInterpolator", p.name)
         assertEquals(ResourceNamespace.RES_AUTO, p.layoutNamespace)
     }
 

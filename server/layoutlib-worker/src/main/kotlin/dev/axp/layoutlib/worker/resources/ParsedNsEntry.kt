@@ -103,4 +103,21 @@ internal sealed class ParsedNsEntry
         override val namespace: ResourceNamespace,
         override val sourcePackage: String? = null,
     ) : ParsedNsEntry()
+
+    /**
+     * `res/interpolator/<name>.xml` raw body — Material 3 motion-easing interpolators
+     * (linear, standard, emphasized, accelerate / decelerate variants). MotionUtils
+     * .resolveThemeInterpolator routes via Theme.resolveAttribute on
+     * ?attr/motionEasing*Interpolator and consumes the resolved TypedValue.resourceId
+     * via AnimationUtils.loadInterpolator → Resources.getXml → callback.getParser.
+     * The bundle's per-name path-style placeholder lets the TypedValue.type pass the
+     * MotionUtils TYPE_STRING (3) assertion at the same time as the resourceId routes
+     * through the standard callback feed.
+     */
+    data class InterpolatorXml(
+        val name: String,
+        val rawXml: String,
+        override val namespace: ResourceNamespace,
+        override val sourcePackage: String? = null,
+    ) : ParsedNsEntry()
 }

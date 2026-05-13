@@ -15,7 +15,7 @@ class AarResourceWalkerTest
 {
 
     @Test
-    fun `AAR with values + manifest 가 정확히 파싱`()
+    fun `AAR with values plus manifest parses correctly`()
     {
         val aar = makeAar(
             manifest = """<manifest package="com.test.lib"/>""",
@@ -24,12 +24,12 @@ class AarResourceWalkerTest
         val result = AarResourceWalker.walkOne(aar)
         assertNotNull(result)
         assertEquals("com.test.lib", result!!.sourcePackage)
-        assertEquals(ResourceNamespace.RES_AUTO, result.entries[0].namespace, "round 2 mode 통일 RES_AUTO")
+        assertEquals(ResourceNamespace.RES_AUTO, result.entries[0].namespace, "unified RES_AUTO mode")
         assertEquals(1, result.entries.size)
     }
 
     @Test
-    fun `values 부재 AAR 은 silent skip + 진단 1줄`()
+    fun `AAR missing values is skipped silently with one diagnostic line`()
     {
         val aar = makeAar(manifest = """<manifest package="com.code.only"/>""", values = null)
         val errOut = ByteArrayOutputStream()
@@ -38,7 +38,7 @@ class AarResourceWalkerTest
         try
         {
             val result = AarResourceWalker.walkOne(aar)
-            assertEquals(null, result, "values 없으면 null 반환")
+            assertEquals(null, result, "null result when values are absent")
             val log = errOut.toString()
             assertTrue(log.contains("[AarResourceWalker]"), "diagnostic prefix")
             assertTrue(log.contains("res/values/values.xml") && log.contains("all absent"))
@@ -50,9 +50,9 @@ class AarResourceWalkerTest
     }
 
     @Test
-    fun `manifest 부재 AAR 은 IllegalStateException`()
+    fun `AAR missing manifest raises IllegalStateException`()
     {
-        val aar = makeAarRaw(emptyMap())  // 빈 zip
+        val aar = makeAarRaw(emptyMap())
         try
         {
             AarResourceWalker.walkOne(aar)
@@ -65,7 +65,7 @@ class AarResourceWalkerTest
     }
 
     @Test
-    fun `manifest package 추출 실패는 IllegalStateException`()
+    fun `manifest package extraction failure raises IllegalStateException`()
     {
         val aar = makeAar(manifest = """<manifest />""", values = """<resources/>""")
         try
@@ -75,12 +75,12 @@ class AarResourceWalkerTest
         }
         catch (e: IllegalStateException)
         {
-            assertTrue(e.message?.contains("package 추출 실패") == true)
+            assertTrue(e.message?.contains("failed to extract package") == true)
         }
     }
 
     @Test
-    fun `walkAll 가 classpath txt 의 aar 만 필터링`()
+    fun `walkAll filters the classpath txt to only aar entries`()
     {
         val aar1 = makeAar("""<manifest package="com.a"/>""", """<resources><dimen name="x">1dp</dimen></resources>""")
         val aar2 = makeAar("""<manifest package="com.b"/>""", """<resources><dimen name="y">2dp</dimen></resources>""")
@@ -89,13 +89,13 @@ class AarResourceWalkerTest
             toFile().deleteOnExit()
         }
         val results = AarResourceWalker.walkAll(classpathTxt)
-        assertEquals(2, results.size, ".jar 는 skip")
+        assertEquals(2, results.size, ".jar entries are skipped")
         assertTrue(results.any { it.sourcePackage == "com.a" })
         assertTrue(results.any { it.sourcePackage == "com.b" })
     }
 
     @Test
-    fun `walkAll wall-clock 측정 출력 + 카운트`()
+    fun `walkAll prints wall-clock measurement plus counts`()
     {
         val aar = makeAar("""<manifest package="com.t"/>""", """<resources/>""")
         val cp = Files.createTempFile("cp", ".txt").apply {
@@ -109,7 +109,7 @@ class AarResourceWalkerTest
             AarResourceWalker.walkAll(cp)
             val log = errOut.toString()
             assertTrue(log.contains("[AarResourceWalker]"))
-            assertTrue(log.contains("ms"), "wall-clock ms 출력")
+            assertTrue(log.contains("ms"), "wall-clock ms in log")
         }
         finally
         {

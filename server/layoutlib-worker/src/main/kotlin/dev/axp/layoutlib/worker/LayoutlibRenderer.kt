@@ -201,6 +201,7 @@ class LayoutlibRenderer(
                 { ref -> bundle.getColorStateListXml(ref) },
                 { ref -> bundle.getAnimatorXml(ref) },
                 { ref -> bundle.getDrawableXml(ref) },
+                { ref -> bundle.getInterpolatorXml(ref) },
             ),
             resources = resources,
         )
